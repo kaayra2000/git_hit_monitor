@@ -1,5 +1,6 @@
 from helpers import sheets_helper, camo_helper, string_helper, json_helper
 import time
+import sys
 def main():
     # JSON dosyasını yükle
     config = json_helper.load_config_from_json('config.json')
@@ -12,17 +13,30 @@ def main():
     spreadsheet = sheets_helper.get_spreadsheet(spreadsheet_name, mime_type)
     sheet = spreadsheet.sheet1
     file_id = spreadsheet.id
+    
+    # Google Sheet URL'sini oluştur
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{file_id}"
+    print(f"Google Sheet URL: {sheet_url}")
+    
     # Erişim izinlerini ayarla
     sheets_helper.apply_permission(file_id, sheets_helper.create_public_access_permission())
     sheets_helper.share_sheet_with_emails(spreadsheet, writer_emails)
+    append_counter = 0
     try:
         while True:
             view_count_str = camo_helper.get_number_from_url(camo_url)
             view_count = string_helper.convert_to_int(view_count_str)
-            sheets_helper.append_to_sheet(sheet, view_count)
+            if sheets_helper.append_to_sheet(sheet, view_count):
+                append_counter += 1
+                # Çıktıyı aynı satıra yazdır
+                sys.stdout.write(f"\r{append_counter}. ekleme yapıldı. Şu anki görüntülenme sayısı: {view_count}")
+                sys.stdout.flush()
+            else:
+                print("Görüntülenme sayısı eklenirken bir hata oluştu.")
+                break
             time.sleep(interval_seconds)
     except KeyboardInterrupt:
-        print("Zamanlayıcı durduruldu.")
+        print("\nZamanlayıcı durduruldu.")
 
 
 

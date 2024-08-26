@@ -95,23 +95,33 @@ def get_spreadsheet(spreadsheet_name: str, mime_type: str) -> gspread.Spreadshee
         # Dosya yoksa yeni bir dosya oluştur
         spreadsheet = create_sheets(spreadsheet_name, mime_type)
     return spreadsheet
-def append_to_sheet(sheet, input_value: Union[str, int, float]):
+def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float]) -> bool:
     """
-    Verilen değeri (string, int veya float) ve anlık tarihi, sheet dosyasının yazılmayan son satırına ekler.
+    Verilen değeri (string, int veya float) ve anlık tarihi, sheet dosyasının yazılmayan son satırına ekler
+    ve işlemin başarılı olup olmadığını döndürür.
 
     Args:
         sheet (gspread.Worksheet): İşlem yapılacak Google Sheet nesnesi.
         input_value (Union[str, int, float]): Sheet'e eklenecek değer.
+
+    Returns:
+        bool: İşlemin başarılı olup olmadığını belirten değer.
     """
-    # Anlık tarihi al
-    current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Yeni satır verilerini hazırla
-    new_row = [current_date, input_value]
-    
-    # Sheet'e yeni satırı ekle
-    sheet.append_row(new_row)
-    print(f"Veri başarıyla eklendi: {new_row}")
+    try:
+        # Anlık tarihi al
+        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Yeni satır verilerini hazırla
+        new_row = [current_date, input_value]
+        
+        # Sheet'e yeni satırı ekle
+        sheet.append_row(new_row)
+        
+        # İşlem başarılıysa True döndür
+        return True
+    except Exception as e:
+        # İşlem başarısızsa False döndür
+        return False
 
 def share_sheet_with_emails(sheet: gspread.Spreadsheet, email_addresses: list[str]):
     """
