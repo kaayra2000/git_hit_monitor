@@ -1,0 +1,1 @@
+CREDENTIAL_FILE = 'credentials.json'
