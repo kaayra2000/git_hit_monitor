@@ -116,11 +116,22 @@ def append_to_sheet(sheet, input_value: Union[str, int, float]):
 def share_sheet_with_emails(sheet: gspread.Spreadsheet, email_addresses: list[str]):
     """
     Verilen e-posta adreslerine sheet üzerinde "writer" yetkisi verir.
+    Eğer e-posta adresine zaten "writer" yetkisi verilmişse tekrar vermeye çalışmaz.
 
     Args:
         sheet (gspread.Spreadsheet): İşlem yapılacak Google Sheet nesnesi.
         email_addresses (List[str]): Yetki verilecek e-posta adreslerinin listesi.
     """
+    # Mevcut izinleri al
+    permissions = sheet.list_permissions()
+    
     for email in email_addresses:
-        sheet.share(email, perm_type='user', role='writer')
-        print(f"{email} adresine 'writer' yetkisi verildi.")
+        # E-posta adresine zaten "writer" yetkisi verilmiş mi kontrol et
+        already_writer = any(p['emailAddress'] == email and p['role'] == 'writer' for p in permissions)
+        
+        if not already_writer:
+            # Eğer yetki verilmemişse, yetki ver
+            sheet.share(email, perm_type='user', role='writer')
+            print(f"{email} adresine 'writer' yetkisi verildi.")
+        else:
+            print(f"{email} adresine zaten 'writer' yetkisi verilmiş.")
