@@ -6,7 +6,7 @@ def main():
     config = json_helper.load_config_from_json('config.json')
     # JSON'dan değerleri al
     spreadsheet_name = config['spreadsheet_name']
-    interval_seconds = config['interval_seconds']
+    interval_seconds = config.get('interval_seconds', 240)
     camo_url = config['camo_url']
     writer_emails = config['writer_emails']
     mime_type = 'application/vnd.google-apps.spreadsheet'
