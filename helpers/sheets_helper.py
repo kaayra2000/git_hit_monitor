@@ -97,31 +97,39 @@ def get_spreadsheet(spreadsheet_name: str, mime_type: str) -> gspread.Spreadshee
     return spreadsheet
 def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float]) -> bool:
     """
-    Verilen değeri (string, int veya float) ve anlık tarihi, sheet dosyasının yazılmayan son satırına ekler
-    ve işlemin başarılı olup olmadığını döndürür.
+    Verilen değeri (string, int veya float) ve anlık tarihi, sheet dosyasının son satırına ekler veya günceller.
+    Eğer son satırın 2. sütunu aynı değere sahipse, o satırı günceller; değilse yeni bir satır ekler.
+    İşlemin başarılı olup olmadığını döndürür.
 
     Args:
         sheet (gspread.Worksheet): İşlem yapılacak Google Sheet nesnesi.
-        input_value (Union[str, int, float]): Sheet'e eklenecek değer.
+        input_value (Union[str, int, float]): Sheet'e eklenecek veya güncellenecek değer.
 
     Returns:
         bool: İşlemin başarılı olup olmadığını belirten değer.
     """
     try:
-        # Anlık tarihi al
+        # Anlık tarihi al ve formatla
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # Yeni satır verilerini hazırla
-        new_row = [current_date, input_value]
+        # Son satırın indeksini ve değerini al
+        last_row = sheet.get_all_values()[-1] if sheet.get_all_values() else None
         
-        # Sheet'e yeni satırı ekle
-        sheet.append_row(new_row)
+        if last_row and str(last_row[1]) == str(input_value):
+            # Son satırın 2. sütunu aynı değere sahipse, o satırı güncelle
+            row_number = len(sheet.get_all_values())
+            sheet.update_cell(row_number, 1, f"'{current_date}")
+        else:
+            # Değilse yeni bir satır ekle
+            new_row = [current_date, input_value]
+            sheet.append_row(new_row)
         
         # İşlem başarılıysa True döndür
         return True
     except Exception as e:
         # İşlem başarısızsa False döndür
         return False
+
 
 def share_sheet_with_emails(sheet: gspread.Spreadsheet, email_addresses: list[str]):
     """
