@@ -1,4 +1,4 @@
-from helpers import sheets_helper, camo_helper, string_helper, json_helper
+from helpers import sheets_helper, camo_helper, string_helper, json_helper, timer_helper
 import time
 import sys
 def main():
@@ -32,12 +32,13 @@ def main():
             if sheets_helper.append_to_sheet(sheet, view_count):
                 append_counter += 1
                 # Çıktıyı aynı satıra yazdır
-                sys.stdout.write(f"\r{append_counter}. ekleme yapıldı. Şu anki görüntülenme sayısı: {view_count}")
+                sys.stdout.write(f"\r{append_counter}. ekleme yapıldı. Şu anki görüntülenme sayısı: {view_count}\n")
                 sys.stdout.flush()
+                
+                timer_helper.countdown_timer(interval_seconds)
             else:
                 print("\nGörüntülenme sayısı eklenirken bir hata oluştu.")
                 break
-            time.sleep(interval_seconds)
     except KeyboardInterrupt:
         print("\nZamanlayıcı durduruldu.")
 
