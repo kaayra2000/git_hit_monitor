@@ -24,7 +24,10 @@ def main():
     append_counter = 0
     try:
         while True:
-            view_count_str = camo_helper.get_number_from_url(camo_url)
+            view_count_str, is_successful = camo_helper.get_number_from_url(camo_url)
+            if not is_successful:
+                print(f"\n{view_count_str}")
+                break
             view_count = string_helper.convert_to_int(view_count_str)
             if sheets_helper.append_to_sheet(sheet, view_count):
                 append_counter += 1
@@ -32,7 +35,7 @@ def main():
                 sys.stdout.write(f"\r{append_counter}. ekleme yapıldı. Şu anki görüntülenme sayısı: {view_count}")
                 sys.stdout.flush()
             else:
-                print("Görüntülenme sayısı eklenirken bir hata oluştu.")
+                print("\nGörüntülenme sayısı eklenirken bir hata oluştu.")
                 break
             time.sleep(interval_seconds)
     except KeyboardInterrupt:
