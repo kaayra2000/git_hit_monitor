@@ -27,18 +27,18 @@ def main():
             view_count_str, is_successful = camo_helper.get_number_from_url(camo_url)
             if not is_successful:
                 print(f"\n{view_count_str}")
-                break
-            view_count = string_helper.convert_to_int(view_count_str)
-            if sheets_helper.append_to_sheet(sheet, view_count):
-                append_counter += 1
-                # Çıktıyı aynı satıra yazdır
-                sys.stdout.write(f"\r{append_counter}. ekleme yapıldı. Şu anki görüntülenme sayısı: {view_count}\n")
-                sys.stdout.flush()
-                
-                timer_helper.countdown_timer(interval_seconds)
             else:
-                print("\nGörüntülenme sayısı eklenirken bir hata oluştu.")
-                break
+                view_count = string_helper.convert_to_int(view_count_str)
+                if sheets_helper.append_to_sheet(sheet, view_count):
+                    append_counter += 1
+                    # Çıktıyı aynı satıra yazdır
+                    sys.stdout.write(f"\r{append_counter}. ekleme yapıldı. Şu anki görüntülenme sayısı: {view_count}\n")
+                    sys.stdout.flush()
+                else:
+                    print("\nGörüntülenme sayısı eklenirken bir hata oluştu.")
+            
+                    
+            timer_helper.countdown_timer(interval_seconds)
     except KeyboardInterrupt:
         print("\nZamanlayıcı durduruldu.")
 
