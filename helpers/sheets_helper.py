@@ -3,7 +3,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from constants import CREDENTIAL_FILE
 from datetime import datetime
-from typing import Union
+from typing import Union, Tuple
 # API'ler için kapsamları tanımlayın
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_file(CREDENTIAL_FILE, scopes=scopes)
@@ -95,7 +95,7 @@ def get_spreadsheet(spreadsheet_name: str, mime_type: str) -> gspread.Spreadshee
         # Dosya yoksa yeni bir dosya oluştur
         spreadsheet = create_sheets(spreadsheet_name, mime_type)
     return spreadsheet
-def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float]) -> bool:
+def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float]) -> Tuple[bool, bool, str]:
     """
     Verilen değeri (string, int veya float) ve anlık tarihi, sheet dosyasının son satırına ekler veya günceller.
     Eğer son satırın 2. sütunu aynı değere sahipse, o satırı günceller; değilse yeni bir satır ekler.
@@ -107,7 +107,10 @@ def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float
 
     Returns:
         bool: İşlemin başarılı olup olmadığını belirten değer.
+        bool: Ekleme yapıldıysa True, güncelleme yapıldıysa False.
+        str:  Ekleme yapılan zaman damgası.
     """
+    is_appended = False
     try:
         # Anlık tarihi al ve formatla
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -123,12 +126,13 @@ def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float
             # Değilse yeni bir satır ekle
             new_row = [current_date, input_value]
             sheet.append_row(new_row)
+            is_appended = True
         
         # İşlem başarılıysa True döndür
-        return True
+        return True, is_appended, current_date
     except Exception as e:
         # İşlem başarısızsa False döndür
-        return False
+        return False, is_appended, str(e)
 
 
 def share_sheet_with_emails(sheet: gspread.Spreadsheet, email_addresses: list[str]):
