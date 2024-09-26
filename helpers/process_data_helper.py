@@ -41,15 +41,11 @@ def read_and_preprocess_data(sheet: 'Spreadsheet') -> pd.DataFrame:
     
     # Verileri zaman damgasına göre sırala
     df = df.sort_values('timestamp')
-
-    # Tarih sütunu oluştur
-    df['date'] = df['timestamp'].dt.date
-    
     return df
 
 def calculate_daily_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Günlük tıklanma sayısını hesaplar.
+    Günlük tıklanma sayısını timestamp sütunundan hesaplar.
 
     Args:
         df (pd.DataFrame): İşlenmiş veriyi içeren DataFrame.
@@ -57,10 +53,14 @@ def calculate_daily_clicks(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Günlük tıklanma sayılarını içeren DataFrame.
     """
+    # 'timestamp' sütunundan tarih bilgisini çıkar ve günlük gruplandırma yap
+    daily_clicks_df = df.groupby(df['timestamp'].dt.date)['number'].agg(['first', 'last'])
+    
     # Günlük tıklanma sayısını hesapla
-    daily_clicks_df = df.groupby('date')['number'].agg(['first', 'last'])
     daily_clicks_df['daily_clicks'] = daily_clicks_df['last'] - daily_clicks_df['first']
+    
     return daily_clicks_df[['daily_clicks']]
+
 
 def calculate_average_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """

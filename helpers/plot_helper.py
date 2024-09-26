@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import process_data_helper
+from . import process_data_helper
 
 def plot_daily_graph(df: pd.DataFrame, title: str, fig_name: str = 'daily_clicks.png') -> None:
     """
@@ -33,7 +33,6 @@ def plot_daily_graph(df: pd.DataFrame, title: str, fig_name: str = 'daily_clicks
     
     # Grafiğin düzenini optimize et
     plt.tight_layout()
-    
     # Grafiği belirtilen dosya adıyla kaydet
     plt.savefig(fig_name)
 

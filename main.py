@@ -1,4 +1,4 @@
-from helpers import sheets_helper, camo_helper, string_helper, json_helper, timer_helper, process_data_helper, date_helper, plot_helper
+from helpers import sheets_helper, camo_helper, string_helper, json_helper, timer_helper, process_data_helper, plot_helper
 import sys
 def main():
     # JSON dosyasını yükle
@@ -31,7 +31,7 @@ def main():
             else:
                 view_count = string_helper.convert_to_int(view_count_str)
                 is_successful, is_appended, append_date = sheets_helper.append_to_sheet(sheet, view_count)
-                df_tuple = [append_date, view_count, date_helper.get_date_components(append_date)]
+                df_tuple = [append_date, view_count]
                 if is_successful:
                     if is_appended:
                         append_counter += 1
