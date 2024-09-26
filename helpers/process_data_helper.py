@@ -68,7 +68,76 @@ def calculate_daily_clicks(df: pd.DataFrame) -> pd.DataFrame:
     
     return daily_clicks_df[['daily_clicks']]
 
+def calculate_monthly_clicks(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aylık tıklanma sayısını timestamp sütunundan hesaplar.
 
+    Args:
+        df (pd.DataFrame): İşlenmiş veriyi içeren DataFrame.
+
+    Returns:
+        pd.DataFrame: Aylık tıklanma sayılarını içeren DataFrame.
+    """
+    # 'timestamp' sütunundan ay bilgisini çıkar ve aylık gruplandırma yap
+    monthly_clicks_df = df.groupby(df['timestamp'].dt.to_period('M'))['number'].agg(['first', 'last'])
+    
+    # Bir önceki ayın son değerini hesapla
+    monthly_clicks_df['prev_month_last'] = monthly_clicks_df['last'].shift(1)
+    
+    # Aylık tıklanma sayısını hesapla
+    monthly_clicks_df['monthly_clicks'] = monthly_clicks_df.apply(
+        lambda row: row['last'] - (row['prev_month_last'] if pd.notnull(row['prev_month_last']) else row['first']),
+        axis=1
+    )
+    
+    return monthly_clicks_df[['monthly_clicks']]
+
+def calculate_quarterly_clicks(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    3 aylık tıklanma sayısını timestamp sütunundan hesaplar.
+
+    Args:
+        df (pd.DataFrame): İşlenmiş veriyi içeren DataFrame.
+
+    Returns:
+        pd.DataFrame: 3 aylık tıklanma sayılarını içeren DataFrame.
+    """
+    # 'timestamp' sütunundan çeyrek bilgisini çıkar ve çeyreklik gruplandırma yap
+    quarterly_clicks_df = df.groupby(df['timestamp'].dt.to_period('Q'))['number'].agg(['first', 'last'])
+    
+    # Bir önceki çeyreğin son değerini hesapla
+    quarterly_clicks_df['prev_quarter_last'] = quarterly_clicks_df['last'].shift(1)
+    
+    # Çeyreklik tıklanma sayısını hesapla
+    quarterly_clicks_df['quarterly_clicks'] = quarterly_clicks_df.apply(
+        lambda row: row['last'] - (row['prev_quarter_last'] if pd.notnull(row['prev_quarter_last']) else row['first']),
+        axis=1
+    )
+    
+    return quarterly_clicks_df[['quarterly_clicks']]
+def calculate_yearly_clicks(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Yıllık tıklanma sayısını timestamp sütunundan hesaplar.
+
+    Args:
+        df (pd.DataFrame): İşlenmiş veriyi içeren DataFrame.
+
+    Returns:
+        pd.DataFrame: Yıllık tıklanma sayılarını içeren DataFrame.
+    """
+    # 'timestamp' sütunundan yıl bilgisini çıkar ve yıllık gruplandırma yap
+    yearly_clicks_df = df.groupby(df['timestamp'].dt.year)['number'].agg(['first', 'last'])
+    
+    # Bir önceki yılın son değerini hesapla
+    yearly_clicks_df['prev_year_last'] = yearly_clicks_df['last'].shift(1)
+    
+    # Yıllık tıklanma sayısını hesapla
+    yearly_clicks_df['yearly_clicks'] = yearly_clicks_df.apply(
+        lambda row: row['last'] - (row['prev_year_last'] if pd.notnull(row['prev_year_last']) else row['first']),
+        axis=1
+    )
+    
+    return yearly_clicks_df[['yearly_clicks']]
 
 
 def calculate_average_clicks(df: pd.DataFrame) -> pd.DataFrame:
