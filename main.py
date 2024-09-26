@@ -1,4 +1,4 @@
-from helpers import sheets_helper, camo_helper, string_helper, json_helper, timer_helper, process_data_helper, date_helper
+from helpers import sheets_helper, camo_helper, string_helper, json_helper, timer_helper, process_data_helper, date_helper, plot_helper
 import sys
 def main():
     # JSON dosyasını yükle
@@ -39,6 +39,7 @@ def main():
                     else:
                         df.loc[len(df) - 1] = df_tuple
                     cycle_counter += 1
+                    plot_helper.plot_all_graphs(df)
                     # Çıktıyı aynı satıra yazdır
                     sys.stdout.write(f"\r{cycle_counter}. deneme ve {append_counter}. ekleme yapıldı. Şu anki görüntülenme sayısı: {view_count}\n")
                     sys.stdout.flush()
