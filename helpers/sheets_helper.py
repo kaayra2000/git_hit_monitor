@@ -156,7 +156,7 @@ def get_spreadsheet(spreadsheet_name: str, mime_type: str) -> gspread.Spreadshee
         # Dosya yoksa yeni bir dosya oluştur
         spreadsheet = create_sheets(spreadsheet_name, mime_type)
     return spreadsheet
-def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float]) -> Tuple[bool, bool, datetime | str]:
+def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float], value_threshold: Union[int, float] = 2) -> Tuple[bool, bool, datetime | str]:
     """
     Verilen değeri (string, int veya float) ve anlık tarihi, sheet dosyasının son satırına ekler veya günceller.
     Eğer son satırın 2. sütunu aynı değere sahipse, o satırı günceller; değilse yeni bir satır ekler.
@@ -165,7 +165,7 @@ def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float
     Args:
         sheet (gspread.Worksheet): İşlem yapılacak Google Sheet nesnesi.
         input_value (Union[str, int, float]): Sheet'e eklenecek veya güncellenecek değer.
-
+        value_threshold (Union[int, float]): İki değer arasındaki kabul edilebilir maksimum fark.
     Returns:
         bool: İşlemin başarılı olup olmadığını belirten değer.
         bool: Ekleme yapıldıysa True, güncelleme yapıldıysa False.
@@ -176,24 +176,66 @@ def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float
         # Anlık tarihi al ve formatla
         current_date = datetime.now()
         current_date_str = current_date.strftime("%Y-%m-%d %H:%M:%S")
-        # Son satırın indeksini ve değerini al
-        last_row = sheet.get_all_values()[-1] if sheet.get_all_values() else None
         
-        if last_row and str(last_row[1]) == str(input_value):
-            # Son satırın 2. sütunu aynı değere sahipse, o satırı güncelle
-            row_number = len(sheet.get_all_values())
-            sheet.update_cell(row_number, 1, f"'{current_date_str}")
-        else:
-            # Değilse yeni bir satır ekle
-            new_row = [current_date_str, input_value]
-            sheet.append_row(new_row)
-            is_appended = True
+        is_appended = update_sheet(sheet, sheet.get_all_values(), input_value, current_date_str, value_threshold)
         
         # İşlem başarılıysa True döndür
         return True, is_appended, current_date
     except Exception as e:
         # İşlem başarısızsa False döndür
         return False, is_appended, str(e)
+def update_sheet(sheet: object, all_values: list, input_value: float, current_date_str: str, value_threshold: float) -> bool:
+    """
+    Bir Google Sheets sayfasını günceller veya yeni bir satır ekler.
+
+    Args:
+        sheet (object): Güncellenecek Google Sheets sayfası nesnesi.
+        all_values (list): Sayfadaki mevcut tüm değerlerin listesi.
+        input_value (float): Eklenecek veya karşılaştırılacak yeni değer.
+        current_date_str (str): Mevcut tarih, string formatında.
+        value_threshold (float): Kayan noktalı sayıları karşılaştırmak için eşik değeri.
+
+    Returns:
+        bool: Yeni bir satır eklendiyse True, aksi halde False.
+    """
+
+    def is_within_threshold(val1: float, val2: float) -> bool:
+        """
+        İki değerin belirli bir eşik içinde olup olmadığını kontrol eder.
+
+        Args:
+            val1 (float): Karşılaştırılacak ilk değer.
+            val2 (float): Karşılaştırılacak ikinci değer.
+
+        Returns:
+            bool: Değerler eşik içindeyse True, değilse False.
+        """
+        try:
+            return abs(float(val1) - float(val2)) <= value_threshold
+        except ValueError:
+            return False  # Değerler float'a dönüştürülemezse, eşik içinde olmadıklarını varsayıyoruz
+
+    is_appended = False
+    last_row = all_values[-1] if all_values else None
+    second_last_row = all_values[-2] if len(all_values) > 1 else None
+
+    if last_row and str(last_row[1]) == str(input_value):
+        # Son satırın 2. sütunu aynı değere sahipse, son satırı güncelle
+        row_number = len(all_values)
+        sheet.update_cell(row_number, 1, f"'{current_date_str}")
+    elif second_last_row and is_within_threshold(second_last_row[1], input_value):
+        # Sondan bir önceki satır varsa ve değer farkı eşiğin altındaysa, son satırı güncelle
+        row_number = len(all_values)
+        sheet.update_cell(row_number, 1, f"'{current_date_str}")
+        sheet.update_cell(row_number, 2, input_value)
+    else:
+        # Diğer durumlarda, yeni satır ekle
+        new_row = [current_date_str, input_value]
+        sheet.append_row(new_row)
+        is_appended = True
+
+    return is_appended
+
 
 
 def share_sheet_with_emails(sheet: gspread.Spreadsheet, email_addresses: list[str]):

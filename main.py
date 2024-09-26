@@ -6,7 +6,7 @@ def main():
 
     # Çalışma sayfasını ayarla
     spreadsheet, sheet, file_id = sheets_helper.setup_spreadsheet(spreadsheet_name)
-
+    value_threshold = 5
     # Çalışma sayfası izinlerini yapılandır
     sheets_helper.configure_sheet_permissions(file_id, spreadsheet, writer_emails)
 
@@ -17,7 +17,7 @@ def main():
     cycle_counter = 0
     try:
         while True:
-            df, new_appends, view_count = process_view_count(camo_url, sheet, df)
+            df, new_appends, view_count = process_view_count(camo_url, sheet, df, value_threshold)
             append_counter += new_appends
             cycle_counter += 1
 
