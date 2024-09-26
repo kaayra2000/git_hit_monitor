@@ -87,6 +87,7 @@ class LineGraphPlotter(GraphPlotter):
         self._set_common_properties(ax)
         plt.tight_layout()
         plt.savefig(fig_name)
+        plt.close()
 
 class YearlyGraphPlotter(LineGraphPlotter):
     def __init__(self, df: pd.DataFrame, title: str) -> None:
