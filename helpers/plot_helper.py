@@ -4,8 +4,21 @@ import os
 from abc import ABC, abstractmethod
 from . import process_data_helper
 import matplotlib.dates as mdates
+
 class GraphPlotter(ABC):
-    def __init__(self, df: pd.DataFrame, title: str, y_column: str, x_label: str):
+    def __init__(self, df: pd.DataFrame, title: str, y_column: str, x_label: str) -> None:
+        """
+        GraphPlotter sınıfının yapıcı metodu.
+
+        Args:
+            df (pd.DataFrame): Çizilecek veriyi içeren DataFrame
+            title (str): Grafiğin başlığı
+            y_column (str): Y ekseninde gösterilecek sütunun adı
+            x_label (str): X ekseni etiketi
+
+        Returns:
+            None
+        """
         self.df = df
         self.title = title
         self.y_column = y_column
@@ -13,9 +26,27 @@ class GraphPlotter(ABC):
 
     @abstractmethod
     def plot(self, fig_name: str) -> None:
+        """
+        Grafiği çizen soyut metot.
+
+        Args:
+            fig_name (str): Kaydedilecek dosyanın adı
+
+        Returns:
+            None
+        """
         pass
 
-    def _set_common_properties(self, ax):
+    def _set_common_properties(self, ax) -> None:
+        """
+        Grafik özelliklerini ayarlayan yardımcı metot.
+
+        Args:
+            ax: Matplotlib axes nesnesi
+
+        Returns:
+            None
+        """
         ax.set_title(self.title)
         ax.set_xlabel(self.x_label)
         ax.set_ylabel('Tıklanma Sayısı')
@@ -24,6 +55,15 @@ class GraphPlotter(ABC):
 
 class LineGraphPlotter(GraphPlotter):
     def plot(self, fig_name: str) -> None:
+        """
+        Çizgi veya çubuk grafiği çizen metot.
+
+        Args:
+            fig_name (str): Kaydedilecek dosyanın adı
+
+        Returns:
+            None
+        """
         fig, ax = plt.subplots(figsize=(12, 6))
         
         if len(self.df) > 1:
@@ -48,18 +88,47 @@ class LineGraphPlotter(GraphPlotter):
         plt.tight_layout()
         plt.savefig(fig_name)
 
-
 class YearlyGraphPlotter(LineGraphPlotter):
-    def __init__(self, df: pd.DataFrame, title: str):
+    def __init__(self, df: pd.DataFrame, title: str) -> None:
+        """
+        YearlyGraphPlotter sınıfının yapıcı metodu.
+
+        Args:
+            df (pd.DataFrame): Çizilecek veriyi içeren DataFrame
+            title (str): Grafiğin başlığı
+
+        Returns:
+            None
+        """
         super().__init__(df, title, 'yearly_clicks', 'Yıl')
 
     def plot(self, fig_name: str) -> None:
+        """
+        Yıllık grafiği çizen metot.
+
+        Args:
+            fig_name (str): Kaydedilecek dosyanın adı
+
+        Returns:
+            None
+        """
         super().plot(fig_name)
         plt.xticks(rotation=0)  # Yıl etiketlerini döndürmeye gerek yok
 
 class GraphFactory:
     @staticmethod
     def create_plotter(period: str, df: pd.DataFrame, title: str) -> GraphPlotter:
+        """
+        Belirtilen periyoda göre uygun GraphPlotter nesnesini oluşturan fabrika metodu.
+
+        Args:
+            period (str): Grafik periyodu ('daily', 'monthly', 'quarterly', 'yearly')
+            df (pd.DataFrame): Çizilecek veriyi içeren DataFrame
+            title (str): Grafiğin başlığı
+
+        Returns:
+            GraphPlotter: Oluşturulan GraphPlotter nesnesi
+        """
         plotters = {
             'daily': lambda: LineGraphPlotter(df, title, 'daily_clicks', 'Tarih'),
             'monthly': lambda: LineGraphPlotter(df, title, 'monthly_clicks', 'Ay'),
@@ -69,6 +138,18 @@ class GraphFactory:
         return plotters.get(period, lambda: None)()
 
 def plot_graph(df: pd.DataFrame, period: str, title: str, fig_name: str) -> None:
+    """
+    Belirtilen periyoda göre grafik çizen fonksiyon.
+
+    Args:
+        df (pd.DataFrame): Çizilecek veriyi içeren DataFrame
+        period (str): Grafik periyodu
+        title (str): Grafiğin başlığı
+        fig_name (str): Kaydedilecek dosyanın adı
+
+    Returns:
+        None
+    """
     plotter = GraphFactory.create_plotter(period, df, title)
     if plotter:
         plotter.plot(fig_name)
@@ -76,12 +157,26 @@ def plot_graph(df: pd.DataFrame, period: str, title: str, fig_name: str) -> None
         raise ValueError(f"Invalid period: {period}")
 
 def plot_all_graphs(df: pd.DataFrame, plot_dir: str = 'plots') -> None:
+    """
+    Tüm periyotlar için grafikleri çizen ve kaydeden fonksiyon.
+
+    Args:
+        df (pd.DataFrame): Çizilecek veriyi içeren DataFrame
+        plot_dir (str): Grafiklerin kaydedileceği dizin, varsayılan değeri 'plots'
+
+    Returns:
+        None
+    """
+    # Eğer belirtilen dizin yoksa, yeni bir dizin oluştur
     if not os.path.exists(plot_dir):
         os.makedirs(plot_dir)
     
+    # Mevcut çalışma dizinini kaydet
     old_dir = os.getcwd()
+    # Çalışma dizinini grafiklerin kaydedileceği dizine değiştir
     os.chdir(plot_dir)
     
+    # Farklı periyotlar için hesaplama fonksiyonlarını tanımla
     periods = {
         'daily': process_data_helper.calculate_daily_clicks,
         'monthly': process_data_helper.calculate_monthly_clicks,
@@ -89,13 +184,21 @@ def plot_all_graphs(df: pd.DataFrame, plot_dir: str = 'plots') -> None:
         'yearly': process_data_helper.calculate_yearly_clicks
     }
     
+    # Her bir periyot için grafik çiz
     for period, calculate_func in periods.items():
+        # İlgili periyot için tıklanma sayılarını hesapla
         period_df = calculate_func(df)
+        # Eğer hesaplanan DataFrame boş değilse grafik çiz
         if not period_df.empty:
+            # Grafik başlığını oluştur
             title = f"{period.capitalize()} Tıklanma Sayısı"
+            # Kaydedilecek dosya adını oluştur
             fig_name = f"{period}_clicks.png"
+            # Grafiği çiz ve kaydet
             plot_graph(period_df, period, title, fig_name)
         else:
+            # Eğer veri yoksa, konsola bilgi mesajı yazdır
             print(f"No data available for {period} graph")
     
+    # Çalışma dizinini eski haline getir
     os.chdir(old_dir)
