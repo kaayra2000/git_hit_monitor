@@ -156,7 +156,7 @@ def get_spreadsheet(spreadsheet_name: str, mime_type: str) -> gspread.Spreadshee
         # Dosya yoksa yeni bir dosya oluştur
         spreadsheet = create_sheets(spreadsheet_name, mime_type)
     return spreadsheet
-def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float]) -> Tuple[bool, bool, str]:
+def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float]) -> Tuple[bool, bool, datetime | str]:
     """
     Verilen değeri (string, int veya float) ve anlık tarihi, sheet dosyasının son satırına ekler veya günceller.
     Eğer son satırın 2. sütunu aynı değere sahipse, o satırı günceller; değilse yeni bir satır ekler.
@@ -169,23 +169,23 @@ def append_to_sheet(sheet: gspread.Worksheet, input_value: Union[str, int, float
     Returns:
         bool: İşlemin başarılı olup olmadığını belirten değer.
         bool: Ekleme yapıldıysa True, güncelleme yapıldıysa False.
-        str:  Ekleme yapılan zaman damgası.
+        datatime:  Ekleme yapılan zaman damgası.
     """
     is_appended = False
     try:
         # Anlık tarihi al ve formatla
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+        current_date = datetime.now()
+        current_date_str = current_date.strftime("%Y-%m-%d %H:%M:%S")
         # Son satırın indeksini ve değerini al
         last_row = sheet.get_all_values()[-1] if sheet.get_all_values() else None
         
         if last_row and str(last_row[1]) == str(input_value):
             # Son satırın 2. sütunu aynı değere sahipse, o satırı güncelle
             row_number = len(sheet.get_all_values())
-            sheet.update_cell(row_number, 1, f"'{current_date}")
+            sheet.update_cell(row_number, 1, f"'{current_date_str}")
         else:
             # Değilse yeni bir satır ekle
-            new_row = [current_date, input_value]
+            new_row = [current_date_str, input_value]
             sheet.append_row(new_row)
             is_appended = True
         
