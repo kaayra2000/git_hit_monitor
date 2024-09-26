@@ -3,12 +3,73 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from constants import CREDENTIAL_FILE
 from datetime import datetime
-from typing import Union, Tuple
+from typing import Union, Tuple, Any
 # API'ler için kapsamları tanımlayın
 scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_file(CREDENTIAL_FILE, scopes=scopes)
 client = gspread.authorize(creds)
 drive_service = build('drive', 'v3', credentials=creds)
+
+
+def configure_sheet_permissions(file_id: str, spreadsheet: Any, writer_emails: list[str]) -> None:
+    """
+    Çalışma sayfasının izinlerini ayarlar.
+
+    Bu fonksiyon, verilen Google Sheets çalışma sayfasının izinlerini yapılandırır.
+    Önce çalışma sayfasını herkese açık hale getirir, ardından belirli e-posta 
+    adreslerine yazma izni verir.
+
+    Args:
+        file_id (str): Çalışma sayfasının benzersiz dosya kimliği.
+        spreadsheet (Any): Google Sheets çalışma sayfası nesnesi.
+        writer_emails (list[str]): Yazma izni verilecek e-posta adreslerinin listesi.
+
+    Returns:
+        None
+
+    Not:
+        Bu fonksiyon, sheets_helper modülünden fonksiyonlar kullanmaktadır.
+        Bu modülün tanımı ve içeriği bu kod parçasında görünmemektedir.
+    """
+    # Çalışma sayfasının URL'sini oluştur
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{file_id}"
+    print(f"Google Sheet URL: {sheet_url}")  # URL'yi konsola yazdır
+    
+    # Çalışma sayfasını herkese açık hale getir
+    apply_permission(file_id, create_public_access_permission())
+    
+    # Belirtilen e-posta adreslerine yazma izni ver
+    share_sheet_with_emails(spreadsheet, writer_emails)
+
+
+def setup_spreadsheet(spreadsheet_name: str) -> tuple[Any, Any, str]:
+    """
+    Google Sheets'te bir çalışma sayfası oluşturur ve gerekli bilgileri döndürür.
+
+    Bu fonksiyon, verilen isimde bir Google Sheets çalışma sayfası oluşturur veya
+    varsa mevcut olanı açar. Oluşturulan veya açılan çalışma sayfasının kendisini,
+    ilk sayfasını ve dosya kimliğini döndürür.
+
+    Args:
+        spreadsheet_name (str): Oluşturulacak veya açılacak çalışma sayfasının adı.
+
+    Returns:
+        tuple[Any, Any, str]: 
+            - spreadsheet (Any): Oluşturulan veya açılan Google Sheets çalışma sayfası nesnesi.
+            - sheet (Any): Çalışma sayfasının ilk sayfası (sheet1).
+            - file_id (str): Oluşturulan veya açılan çalışma sayfasının benzersiz dosya kimliği.
+
+    Not:
+        Bu fonksiyon, get_spreadsheet() adlı başka bir fonksiyonu kullanır. Bu fonksiyonun
+        tanımı ve içeriği bu kod parçasında görünmemektedir.
+    """
+    mime_type = 'application/vnd.google-apps.spreadsheet'
+    spreadsheet = get_spreadsheet(spreadsheet_name, mime_type)  # Google Sheets çalışma sayfası oluşturur veya açar
+    sheet = spreadsheet.sheet1  # Çalışma sayfasının ilk sayfasını alır
+    file_id = spreadsheet.id  # Çalışma sayfasının benzersiz kimliğini alır
+    return spreadsheet, sheet, file_id  # Oluşturulan veya açılan çalışma sayfası, ilk sayfa ve dosya kimliğini döndürür
+
+
 
 def create_sheets(spreadsheet_name: str, mime_type: str) -> gspread.Spreadsheet:
     """
