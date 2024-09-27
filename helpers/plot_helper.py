@@ -55,7 +55,7 @@ class GraphPlotter(ABC):
         plt.tight_layout()
 
 class LineGraphPlotter(GraphPlotter):
-    def plot(self, fig_name: str) -> None:
+    def plot(self, fig_name: str, save_format: str = "svg") -> None:
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # İndeksin tipini kontrol et ve datetime tipine dönüştür
@@ -104,7 +104,7 @@ class LineGraphPlotter(GraphPlotter):
 
         self._set_common_properties(ax)
         plt.tight_layout()
-        plt.savefig(fig_name)
+        plt.savefig(fig_name + f".{save_format}", format=save_format)
         plt.close()
 
 class YearlyGraphPlotter(LineGraphPlotter):
@@ -212,7 +212,7 @@ def plot_all_graphs(df: pd.DataFrame, plot_dir: str = 'plots') -> None:
             # Grafik başlığını oluştur
             title = f"{period.capitalize()} Tıklanma Sayısı"
             # Kaydedilecek dosya adını oluştur
-            fig_name = f"{period}_clicks.png"
+            fig_name = f"{period}_clicks"
             # Grafiği çiz ve kaydet
             plot_graph(period_df, period, title, fig_name)
         else:
