@@ -129,15 +129,22 @@ def calculate_yearly_clicks(df: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame: Yıllık tıklanma sayılarını içeren DataFrame.
     """
     # 'timestamp' sütunundan yıl bilgisini çıkar ve yıllık gruplandırma yap
-    df['year'] = df['timestamp'].dt.year
-    yearly_clicks_df = df.groupby('year')['number'].agg(['first', 'last'])
+    # df'yi değiştirmek yerine, gruplandırma için geçici bir yıl serisi oluşturuyoruz
+    year_series = df['timestamp'].dt.year
+    yearly_clicks_df = df.groupby(year_series)['number'].agg(['first', 'last'])
 
     # Bir önceki yılın son değerini hesapla
     yearly_clicks_df['prev_year_last'] = yearly_clicks_df['last'].shift(1)
 
     # Yıllık tıklanma sayısını hesapla
+    def calculate_yearly_clicks_row(row):
+        if pd.notnull(row['prev_year_last']):
+            return row['last'] - row['prev_year_last']
+        else:
+            return row['last'] - row['first']
+
     yearly_clicks_df['yearly_clicks'] = yearly_clicks_df.apply(
-        lambda row: row['last'] - (row['prev_year_last'] if pd.notnull(row['prev_year_last']) else row['first']),
+        calculate_yearly_clicks_row,
         axis=1
     )
 
