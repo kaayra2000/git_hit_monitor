@@ -4,6 +4,7 @@ import os
 from abc import ABC, abstractmethod
 from . import process_data_helper
 import matplotlib.dates as mdates
+from matplotlib.ticker import FixedLocator
 
 class GraphPlotter(ABC):
     def __init__(self, df: pd.DataFrame, title: str, y_column: str, x_label: str) -> None:
@@ -55,40 +56,49 @@ class GraphPlotter(ABC):
 
 class LineGraphPlotter(GraphPlotter):
     def plot(self, fig_name: str) -> None:
-        """
-        Çizgi veya çubuk grafiği çizen metot.
-
-        Args:
-            fig_name (str): Kaydedilecek dosyanın adı
-
-        Returns:
-            None
-        """
         fig, ax = plt.subplots(figsize=(12, 6))
-        
+
+        # İndeksin tipini kontrol et ve datetime tipine dönüştür
+        if isinstance(self.df.index, pd.PeriodIndex):
+            self.df.index = self.df.index.to_timestamp()
+        elif not isinstance(self.df.index, pd.DatetimeIndex):
+            self.df.index = pd.to_datetime(self.df.index)
+
+        # İndeks değerlerini Matplotlib'in anlayacağı float tipine dönüştür
+        date_numbers = mdates.date2num(self.df.index)
+
         if len(self.df) > 1:
-            self.df.plot(y=self.y_column, ax=ax)
+            ax.plot(date_numbers, self.df[self.y_column], marker='o')
         else:
-            # Index'in tipini kontrol et ve gerekirse dönüştür
-            if isinstance(self.df.index, pd.PeriodIndex):
-                x = self.df.index.to_timestamp()
-            elif isinstance(self.df.index, pd.DatetimeIndex):
-                x = self.df.index
-            else:
-                x = pd.to_datetime(self.df.index)
-            
-            ax.bar(x, self.df[self.y_column], width=1)  # width=1 bir günlük genişlik için
-        
-        # X ekseni formatını ayarla
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-        
-        plt.xticks(rotation=45, ha='right')
+            ax.bar(date_numbers, self.df[self.y_column], width=20)  # width değerini periyoda göre ayarlayabilirsiniz
+
+        # X ekseni formatını periyoda göre ayarla
+        if self.x_label == 'Yıl':
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            plt.xticks(rotation=0)
+            offset = 366  # Bir yıl için
+        elif self.x_label == 'Ay':
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+            plt.xticks(rotation=45, ha='right')
+            offset = 31  # Bir ay için
+        else:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            plt.xticks(rotation=45, ha='right')
+            offset = 1  # Bir gün için
+
+        # X ekseni limitlerini ayarla
+        ax.set_xlim(date_numbers.min() - offset, date_numbers.max() + offset)
+
+        # FixedLocator kullanımı - tarihleri numaralara dönüştürdük
+        ax.xaxis.set_major_locator(FixedLocator(date_numbers))
+
+        # Otomatik tarih formatlamasını etkinleştir
+        ax.xaxis_date()
+
         self._set_common_properties(ax)
         plt.tight_layout()
         plt.savefig(fig_name)
         plt.close()
-
 class YearlyGraphPlotter(LineGraphPlotter):
     def __init__(self, df: pd.DataFrame, title: str) -> None:
         """
@@ -123,7 +133,7 @@ class GraphFactory:
         Belirtilen periyoda göre uygun GraphPlotter nesnesini oluşturan fabrika metodu.
 
         Args:
-            period (str): Grafik periyodu ('daily', 'monthly', 'quarterly', 'yearly')
+            period (str): Grafik periyodu ('günlük', 'aylık', 'çeyreklik', 'yıllık')
             df (pd.DataFrame): Çizilecek veriyi içeren DataFrame
             title (str): Grafiğin başlığı
 
@@ -131,10 +141,10 @@ class GraphFactory:
             GraphPlotter: Oluşturulan GraphPlotter nesnesi
         """
         plotters = {
-            'daily': lambda: LineGraphPlotter(df, title, 'daily_clicks', 'Tarih'),
-            'monthly': lambda: LineGraphPlotter(df, title, 'monthly_clicks', 'Ay'),
-            'quarterly': lambda: LineGraphPlotter(df, title, 'quarterly_clicks', 'Çeyrek'),
-            'yearly': lambda: YearlyGraphPlotter(df, title)
+            'günlük': lambda: LineGraphPlotter(df, title, 'daily_clicks', 'Tarih'),
+            'aylık': lambda: LineGraphPlotter(df, title, 'monthly_clicks', 'Ay'),
+            'çeyreklik': lambda: LineGraphPlotter(df, title, 'quarterly_clicks', 'Çeyrek'),
+            'yıllık': lambda: YearlyGraphPlotter(df, title)
         }
         return plotters.get(period, lambda: None)()
 
@@ -179,10 +189,10 @@ def plot_all_graphs(df: pd.DataFrame, plot_dir: str = 'plots') -> None:
     
     # Farklı periyotlar için hesaplama fonksiyonlarını tanımla
     periods = {
-        'daily': process_data_helper.calculate_daily_clicks,
-        'monthly': process_data_helper.calculate_monthly_clicks,
-        'quarterly': process_data_helper.calculate_quarterly_clicks,
-        'yearly': process_data_helper.calculate_yearly_clicks
+        'günlük': process_data_helper.calculate_daily_clicks,
+        'aylık': process_data_helper.calculate_monthly_clicks,
+        'çeyreklik': process_data_helper.calculate_quarterly_clicks,
+        'yıllık': process_data_helper.calculate_yearly_clicks
     }
     
     # Her bir periyot için grafik çiz
