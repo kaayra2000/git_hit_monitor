@@ -68,9 +68,13 @@ class LineGraphPlotter(GraphPlotter):
         date_numbers = mdates.date2num(self.df.index)
 
         if len(self.df) > 1:
-            ax.plot(date_numbers, self.df[self.y_column], marker='o')
+            ax.plot(date_numbers, self.df[self.y_column], marker='o', label='Veri')
         else:
-            ax.bar(date_numbers, self.df[self.y_column], width=20)  # width değerini periyoda göre ayarlayabilirsiniz
+            ax.bar(date_numbers, self.df[self.y_column], width=20, label='Veri')  # width değerini periyoda göre ayarlayın
+
+        # Ortalama değeri hesapla ve ortalama çizgisini ekle
+        mean_value = self.df[self.y_column].mean()
+        ax.axhline(y=mean_value, color='r', linestyle='--', linewidth=2, label='Ortalama')
 
         # X ekseni formatını periyoda göre ayarla
         if self.x_label == 'Yıl':
@@ -95,10 +99,14 @@ class LineGraphPlotter(GraphPlotter):
         # Otomatik tarih formatlamasını etkinleştir
         ax.xaxis_date()
 
+        # Legend'i göster
+        ax.legend()
+
         self._set_common_properties(ax)
         plt.tight_layout()
         plt.savefig(fig_name)
         plt.close()
+
 class YearlyGraphPlotter(LineGraphPlotter):
     def __init__(self, df: pd.DataFrame, title: str) -> None:
         """
