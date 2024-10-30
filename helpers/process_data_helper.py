@@ -45,29 +45,145 @@ def read_and_preprocess_data(sheet: 'Spreadsheet') -> pd.DataFrame:
 
 def calculate_daily_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Günlük tıklanma sayısını timestamp sütunundan hesaplar.
-    Bir önceki günün son değerini kullanır (eğer varsa), yoksa aynı günün ilk değerini kullanır.
-
+    Zaman damgası sütunundan günlük tıklanma sayısını hesaplar.
+    - Her gün için, günün son tık sayısından ilk tık sayısını çıkararak günlük tıklanma sayısını hesaplar.
+    - Eğer bir güne ait kayıt yoksa, o günün tıklanma sayısını önceki ve sonraki kayıtlar arasındaki ortalama değerle tahmin eder.
+    
     Args:
         df (pd.DataFrame): İşlenmiş veriyi içeren DataFrame.
-
+    
     Returns:
         pd.DataFrame: Günlük tıklanma sayılarını içeren DataFrame.
     """
-    # 'timestamp' sütunundan tarih bilgisini çıkar ve günlük gruplandırma yap
-    daily_clicks_df = df.groupby(df['timestamp'].dt.date)['number'].agg(['first', 'last'])
+    df = df.copy()
     
-    # Bir önceki günün son değerini hesapla
-    daily_clicks_df['prev_day_last'] = daily_clicks_df['last'].shift(1)
+    # Zaman damgası sütununu datetime formatına çevir
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    # Tarih bilgisini ayrı bir sütuna al
+    df['date'] = df['timestamp'].dt.normalize()
+    
+    # Her gün için ilk ve son tık sayılarını al
+    daily_clicks = get_daily_first_last(df)
     
     # Günlük tıklanma sayısını hesapla
-    daily_clicks_df['daily_clicks'] = daily_clicks_df.apply(
-        lambda row: row['last'] - (row['prev_day_last'] if pd.notnull(row['prev_day_last']) else row['first']),
-        axis=1
-    )
+    daily_clicks['daily_clicks'] = calculate_daily_clicks_difference(daily_clicks)
     
-    return daily_clicks_df[['daily_clicks']]
+    # Tüm tarih aralığını kapsayacak şekilde yeniden indeksleme yap
+    all_dates = pd.date_range(start=df['date'].min(), end=df['date'].max(), freq='D')
+    daily_clicks = daily_clicks.reindex(all_dates)
+    daily_clicks.index.name = 'date'
+    
+    # Eksik günlerin tıklanma sayılarını tahmin et
+    daily_clicks['daily_clicks'] = fill_missing_clicks(daily_clicks)
+    
+    # Sonucu hazırlayıp döndür
+    result_df = daily_clicks[['daily_clicks']]
+    
+    return result_df
 
+def get_daily_first_last(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Her gün için ilk ve son tık sayılarını döndürür.
+    
+    Args:
+        df (pd.DataFrame): Veri DataFrame'i.
+    
+    Returns:
+        pd.DataFrame: Her gün için ilk ve son tık sayılarını içeren DataFrame.
+    """
+    # Her gün için ilk ve son tık sayılarını al
+    daily_stats = df.groupby('date')['number'].agg(first='first', last='last')
+    return daily_stats
+
+def calculate_daily_clicks_difference(daily_clicks: pd.DataFrame) -> pd.Series:
+    """
+    Günlük tıklanma sayılarını hesaplar.
+    
+    Args:
+        daily_clicks (pd.DataFrame): Günlük ilk ve son tık sayılarını içeren DataFrame.
+    
+    Returns:
+        pd.Series: Günlük tıklanma sayılarını içeren seri.
+    """
+    # Günlük tıklanma sayısını hesapla
+    return daily_clicks['last'] - daily_clicks['first']
+
+def fill_missing_clicks(daily_clicks: pd.DataFrame) -> pd.Series:
+    """
+    Eksik günlerin tıklanma sayılarını tahmin eder.
+    
+    Args:
+        daily_clicks (pd.DataFrame): Günlük tıklanma sayılarını içeren DataFrame.
+    
+    Returns:
+        pd.Series: Tahmin edilmiş günlük tıklanma sayılarını içeren seri.
+    """
+    clicks = daily_clicks['daily_clicks']
+    is_missing = clicks.isna()
+    
+    # Eksik günlerin tarihlerini al
+    missing_dates = clicks[is_missing].index
+    
+    # Eksik günler için tıklanma sayılarını tahmin et
+    for missing_date in missing_dates:
+        # Önceki ve sonraki veri olan tarihleri bul
+        prev_date = find_prev_date_with_data(daily_clicks, missing_date)
+        next_date = find_next_date_with_data(daily_clicks, missing_date)
+        
+        if prev_date and next_date:
+            # Toplam gün sayısı (eksik günler dahil)
+            total_days = (next_date - prev_date).days
+            # Toplam tıklanma sayısı farkı
+            total_clicks = daily_clicks.at[next_date, 'first'] - daily_clicks.at[prev_date, 'last']
+            # Günlük ortalama tıklanma sayısı
+            avg_clicks = total_clicks / total_days
+            # Eksik günün tıklanma sayısını belirle
+            clicks.at[missing_date] = avg_clicks
+        else:
+            # Önceki veya sonraki tarih yoksa tıklanma sayısını 0 olarak kabul et
+            clicks.at[missing_date] = 0
+    
+    return clicks
+
+def find_prev_date_with_data(daily_clicks: pd.DataFrame, current_date: pd.Timestamp) -> pd.Timestamp or None:
+    """
+    Mevcut tarihten önceki veri içeren en yakın tarihi bulur.
+    
+    Args:
+        daily_clicks (pd.DataFrame): Günlük tıklanma sayılarını içeren DataFrame.
+        current_date (pd.Timestamp): Mevcut tarih.
+    
+    Returns:
+        pd.Timestamp veya None: Önceki veri içeren tarih veya None.
+    """
+    # Mevcut tarihten önceki tarihleri al
+    prev_dates = daily_clicks.loc[:current_date].iloc[:-1]
+    # Veri olan tarihleri filtrele
+    prev_dates = prev_dates[prev_dates['last'].notna()]
+    if not prev_dates.empty:
+        return prev_dates.index[-1]
+    else:
+        return None
+
+def find_next_date_with_data(daily_clicks: pd.DataFrame, current_date: pd.Timestamp) -> pd.Timestamp or None:
+    """
+    Mevcut tarihten sonraki veri içeren en yakın tarihi bulur.
+    
+    Args:
+        daily_clicks (pd.DataFrame): Günlük tıklanma sayılarını içeren DataFrame.
+        current_date (pd.Timestamp): Mevcut tarih.
+    
+    Returns:
+        pd.Timestamp veya None: Sonraki veri içeren tarih veya None.
+    """
+    # Mevcut tarihten sonraki tarihleri al
+    next_dates = daily_clicks.loc[current_date:].iloc[1:]
+    # Veri olan tarihleri filtrele
+    next_dates = next_dates[next_dates['first'].notna()]
+    if not next_dates.empty:
+        return next_dates.index[0]
+    else:
+        return None
 def calculate_monthly_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aylık tıklanma sayısını timestamp sütunundan hesaplar.
