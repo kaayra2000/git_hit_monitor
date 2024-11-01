@@ -5,5 +5,6 @@ from . import json_helper
 from . import timer_helper
 from . import process_data_helper
 from . import plot_helper
+from . import enum_helper   
 from .configuration_helper import load_configuration
 from .process_view_count_helper import process_view_count
