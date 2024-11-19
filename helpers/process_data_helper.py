@@ -45,79 +45,80 @@ def read_and_preprocess_data(sheet: 'Spreadsheet') -> pd.DataFrame:
 
 def calculate_daily_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculates the daily clicks based on the timestamp and number columns.
-    
-    - For each day, it takes the first and last records to compute the clicks difference.
-    - If a day has no records, it fills the 'number_first' and 'number_last'
-      by carrying forward the last valid values and backward filling from the next valid entries.
-    - The daily clicks are scaled to a 24-hour period based on the time elapsed.
-    
-    Args:
-        df (pd.DataFrame): The input DataFrame containing 'timestamp' and 'number' columns.
-        
-    Returns:
-        pd.DataFrame: A DataFrame with 'daily_clicks' column indexed by 'date'.
+    Zaman damgaları ve sayı sütunlarına dayalı olarak günlük tıklamaları hesaplar.
     """
     df = df.copy()
-    
-    # Convert 'timestamp' column to datetime and sort the DataFrame
+    df = preprocess_dataframe(df)
+    all_dates = generate_date_range(df)
+    daily_stats = compute_daily_statistics(df, all_dates)
+    daily_stats = fill_missing_values(daily_stats)
+    daily_stats = calculate_clicks_and_time(daily_stats)
+    daily_clicks = extract_daily_clicks(daily_stats)
+    return daily_clicks
+
+def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Zaman damgalarını dönüştürerek ve sıralayarak VeriFrame'i ön işler.
+    """
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df = df.sort_values('timestamp')
-    
-    # Extract the date from timestamp
     df['date'] = df['timestamp'].dt.date
-    
-    # Generate a complete date range
-    all_dates = pd.date_range(start=df['date'].min(), end=df['date'].max(), freq='D').date
-    
-    # Get the first and last entries for each day
+    return df
+
+def generate_date_range(df: pd.DataFrame) -> np.ndarray:
+    """
+    VeriFrame'deki minimum ve maksimum tarihten bir tam tarih aralığı oluşturur.
+    """
+    return pd.date_range(start=df['date'].min(), end=df['date'].max(), freq='D').date
+
+def compute_daily_statistics(df: pd.DataFrame, all_dates: np.ndarray) -> pd.DataFrame:
+    """
+    Her gün için ilk ve son girişleri hesaplar ve bunları birleştirir.
+    """
     daily_first = df.groupby('date').first().reindex(all_dates)
     daily_last = df.groupby('date').last().reindex(all_dates)
-    
-    # Ensure the index name is 'date'
     daily_first.index.name = 'date'
     daily_last.index.name = 'date'
-    
-    # Combine the first and last entries into a single DataFrame
     daily_stats = pd.DataFrame({
         'number_first': daily_first['number'],
         'timestamp_first': daily_first['timestamp'],
         'number_last': daily_last['number'],
         'timestamp_last': daily_last['timestamp']
     }, index=all_dates)
-    
-    # Forward-fill missing 'number_first' and 'timestamp_first' values
+    return daily_stats
+
+def fill_missing_values(daily_stats: pd.DataFrame) -> pd.DataFrame:
+    """
+    Eksik değerleri ileri ve geri doldurarak tamamlar.
+    """
     daily_stats['number_first'] = daily_stats['number_first'].ffill()
     daily_stats['timestamp_first'] = daily_stats['timestamp_first'].ffill()
-    
-    # Backward-fill missing 'number_last' and 'timestamp_last' values
     daily_stats['number_last'] = daily_stats['number_last'].bfill()
     daily_stats['timestamp_last'] = daily_stats['timestamp_last'].bfill()
-    
-    # Calculate the time elapsed in hours
+    return daily_stats
+
+def calculate_clicks_and_time(daily_stats: pd.DataFrame) -> pd.DataFrame:
+    """
+    Geçen zamanı ve tıklama farkını hesaplar.
+    """
     daily_stats['hours_elapsed'] = (
         daily_stats['timestamp_last'] - daily_stats['timestamp_first']
     ).dt.total_seconds() / 3600
-    
-    # Calculate the clicks difference
     daily_stats['clicks_diff'] = daily_stats['number_last'] - daily_stats['number_first']
-    
-    # Handle cases where hours_elapsed is zero or negative
     daily_stats['daily_clicks'] = np.where(
         daily_stats['hours_elapsed'] > 0,
         (daily_stats['clicks_diff'] * (24 / daily_stats['hours_elapsed'])),
         0
     )
-    
-    # Replace infinities and NaNs with zeros
     daily_stats['daily_clicks'] = daily_stats['daily_clicks'].replace([np.inf, -np.inf], np.nan).fillna(0)
-    
-    # Keep only the 'daily_clicks' column
-    daily_clicks = daily_stats[['daily_clicks']]
-    
-    # Set the index name
+    return daily_stats
+
+def extract_daily_clicks(daily_stats: pd.DataFrame) -> pd.DataFrame:
+    """
+    'daily_clicks' sütununu çıkarır ve indeks adını ayarlar.
+    """
+    daily_clicks = daily_stats[['daily_clicks']].copy()
     daily_clicks.index.name = 'date'
-    
     return daily_clicks
 
 def calculate_monthly_clicks(df: pd.DataFrame) -> pd.DataFrame:
