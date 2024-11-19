@@ -42,84 +42,88 @@ def read_and_preprocess_data(sheet: 'Spreadsheet') -> pd.DataFrame:
     # Verileri zaman damgasına göre sırala
     df = df.sort_values('timestamp')
     return df
-
 def calculate_daily_clicks(df: pd.DataFrame) -> pd.DataFrame:
+    return calculate_clicks(df, period_days=1, column_name='daily_clicks')
+
+def calculate_clicks(df: pd.DataFrame, period_days: int = 1, column_name: str = 'clicks_per_period') -> pd.DataFrame:
     """
-    Zaman damgaları ve sayı sütunlarına dayalı olarak günlük tıklamaları hesaplar.
+    Hesaplamaları istenen zaman periyoduna göre yaparak tıklamaları hesaplar.
     """
     df = df.copy()
-    df = preprocess_dataframe(df)
-    all_dates = generate_date_range(df)
-    daily_stats = compute_daily_statistics(df, all_dates)
-    daily_stats = fill_missing_values(daily_stats)
-    daily_stats = calculate_clicks_and_time(daily_stats)
-    daily_clicks = extract_daily_clicks(daily_stats)
-    return daily_clicks
+    df = convert_and_sort_timestamps(df)
+    all_periods = create_complete_period_range(df, period_days)
+    period_stats = compute_period_statistics(df, all_periods)
+    period_stats = fill_missing_period_values(period_stats)
+    period_stats = calculate_clicks_and_time_elapsed(period_stats, period_days, column_name)
+    clicks_per_period = extract_clicks_per_period(period_stats, column_name)
+    return clicks_per_period
 
-def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+def convert_and_sort_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Zaman damgalarını dönüştürerek ve sıralayarak VeriFrame'i ön işler.
+    Zaman damgalarını dönüştürür ve DataFrame'i sıralar.
     """
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df = df.sort_values('timestamp')
-    df['date'] = df['timestamp'].dt.date
     return df
 
-def generate_date_range(df: pd.DataFrame) -> np.ndarray:
+def create_complete_period_range(df: pd.DataFrame, period_days: int) -> pd.DatetimeIndex:
     """
-    VeriFrame'deki minimum ve maksimum tarihten bir tam tarih aralığı oluşturur.
+    DataFrame'deki minimum ve maksimum zamandan tam bir periyot aralığı oluşturur.
     """
-    return pd.date_range(start=df['date'].min(), end=df['date'].max(), freq='D').date
+    start = df['timestamp'].min().normalize()
+    end = df['timestamp'].max().normalize() + pd.Timedelta(days=1)
+    return pd.date_range(start=start, end=end, freq=f'{period_days}D')
 
-def compute_daily_statistics(df: pd.DataFrame, all_dates: np.ndarray) -> pd.DataFrame:
+def compute_period_statistics(df: pd.DataFrame, all_periods: pd.DatetimeIndex) -> pd.DataFrame:
     """
-    Her gün için ilk ve son girişleri hesaplar ve bunları birleştirir.
+    Her periyot için ilk ve son girişleri hesaplar ve birleştirir.
     """
-    daily_first = df.groupby('date').first().reindex(all_dates)
-    daily_last = df.groupby('date').last().reindex(all_dates)
-    daily_first.index.name = 'date'
-    daily_last.index.name = 'date'
-    daily_stats = pd.DataFrame({
-        'number_first': daily_first['number'],
-        'timestamp_first': daily_first['timestamp'],
-        'number_last': daily_last['number'],
-        'timestamp_last': daily_last['timestamp']
-    }, index=all_dates)
-    return daily_stats
+    df['period_start'] = pd.cut(df['timestamp'], bins=all_periods, right=False, labels=all_periods[:-1])
+    period_first = df.groupby('period_start', observed=False).first().reindex(all_periods[:-1])
+    period_last = df.groupby('period_start', observed=False).last().reindex(all_periods[:-1])
+    period_stats = pd.DataFrame({
+        'number_first': period_first['number'],
+        'timestamp_first': period_first['timestamp'],
+        'number_last': period_last['number'],
+        'timestamp_last': period_last['timestamp']
+    }, index=all_periods[:-1])
+    return period_stats
 
-def fill_missing_values(daily_stats: pd.DataFrame) -> pd.DataFrame:
+def fill_missing_period_values(period_stats: pd.DataFrame) -> pd.DataFrame:
     """
     Eksik değerleri ileri ve geri doldurarak tamamlar.
     """
-    daily_stats['number_first'] = daily_stats['number_first'].ffill()
-    daily_stats['timestamp_first'] = daily_stats['timestamp_first'].ffill()
-    daily_stats['number_last'] = daily_stats['number_last'].bfill()
-    daily_stats['timestamp_last'] = daily_stats['timestamp_last'].bfill()
-    return daily_stats
+    period_stats['number_first'] = period_stats['number_first'].ffill()
+    period_stats['timestamp_first'] = period_stats['timestamp_first'].ffill()
+    period_stats['number_last'] = period_stats['number_last'].bfill()
+    period_stats['timestamp_last'] = period_stats['timestamp_last'].bfill()
+    return period_stats
 
-def calculate_clicks_and_time(daily_stats: pd.DataFrame) -> pd.DataFrame:
+def calculate_clicks_and_time_elapsed(period_stats: pd.DataFrame, period_days: int, column_name: str) -> pd.DataFrame:
     """
     Geçen zamanı ve tıklama farkını hesaplar.
     """
-    daily_stats['hours_elapsed'] = (
-        daily_stats['timestamp_last'] - daily_stats['timestamp_first']
+    period_stats['hours_elapsed'] = (
+        period_stats['timestamp_last'] - period_stats['timestamp_first']
     ).dt.total_seconds() / 3600
-    daily_stats['clicks_diff'] = daily_stats['number_last'] - daily_stats['number_first']
-    daily_stats['daily_clicks'] = np.where(
-        daily_stats['hours_elapsed'] > 0,
-        (daily_stats['clicks_diff'] * (24 / daily_stats['hours_elapsed'])),
+    period_stats['clicks_diff'] = period_stats['number_last'] - period_stats['number_first']
+    # Tıklamaları periyot uzunluğuna ölçeklendir
+    period_length_hours = period_days * 24
+    period_stats[column_name] = np.where(
+        period_stats['hours_elapsed'] > 0,
+        (period_stats['clicks_diff'] * (period_length_hours / period_stats['hours_elapsed'])),
         0
     )
-    daily_stats['daily_clicks'] = daily_stats['daily_clicks'].replace([np.inf, -np.inf], np.nan).fillna(0)
-    return daily_stats
+    period_stats[column_name] = period_stats[column_name].replace([np.inf, -np.inf], np.nan).fillna(0)
+    return period_stats
 
-def extract_daily_clicks(daily_stats: pd.DataFrame) -> pd.DataFrame:
+def extract_clicks_per_period(period_stats: pd.DataFrame, column_name: str) -> pd.DataFrame:
     """
-    'daily_clicks' sütununu çıkarır ve indeks adını ayarlar.
+    Belirtilen tıklama sütununu çıkarır ve indeks adını ayarlar.
     """
-    daily_clicks = daily_stats[['daily_clicks']].copy()
-    daily_clicks.index.name = 'date'
-    return daily_clicks
+    clicks_per_period = period_stats[[column_name]].copy()
+    clicks_per_period.index.name = 'period_start'
+    return clicks_per_period
 
 def calculate_monthly_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """
