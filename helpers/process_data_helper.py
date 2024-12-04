@@ -20,8 +20,8 @@ def read_and_preprocess_data(sheet: 'Spreadsheet') -> pd.DataFrame:
     # Sheet'den veriyi oku
     data = sheet.get_all_values()
     
-    if not data:
-        raise ValueError("Sheet boş veya veri içermiyor.")
+    if not data or data[0] == []:
+        return pd.DataFrame(columns=['timestamp', 'number'])
     
     # İlk satır sütun isimleri değilse, sütun isimlerini ekle
     if data[0] != ['timestamp', 'number']:

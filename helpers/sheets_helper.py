@@ -86,7 +86,11 @@ def create_sheets(spreadsheet_name: str, mime_type: str) -> gspread.Spreadsheet:
         'name': spreadsheet_name,
         'mimeType': mime_type
     }
-    spreadsheet = drive_service.files().create(body=file_metadata, fields='id').execute()
+    # Dosyayı oluştur ve ID'sini al
+    file = drive_service.files().create(body=file_metadata, fields='id').execute()
+    file_id = file.get('id')
+    # gspread istemcisini kullanarak spreadsheet'i aç
+    spreadsheet = client.open_by_key(file_id)
     return spreadsheet
 
 def create_public_access_permission() -> dict:
@@ -251,11 +255,12 @@ def share_sheet_with_emails(sheet: gspread.Spreadsheet, email_addresses: list[st
     permissions = sheet.list_permissions()
     
     for email in email_addresses:
-        # E-posta adresine zaten "writer" yetkisi verilmiş mi kontrol et
-        already_writer = any(p['emailAddress'] == email and p['role'] == 'writer' for p in permissions)
-        
+        already_writer = any(
+            p.get('emailAddress') == email and p.get('role') == 'writer'
+            for p in permissions
+        )
+
         if not already_writer:
-            # Eğer yetki verilmemişse, yetki ver
             sheet.share(email, perm_type='user', role='writer')
             print(f"{email} adresine 'writer' yetkisi verildi.")
         else:
