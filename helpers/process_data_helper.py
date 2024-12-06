@@ -42,88 +42,192 @@ def read_and_preprocess_data(sheet: 'Spreadsheet') -> pd.DataFrame:
     # Verileri zaman damgasına göre sırala
     df = df.sort_values('timestamp')
     return df
+
 def calculate_daily_clicks(df: pd.DataFrame) -> pd.DataFrame:
     return calculate_clicks(df, period_days=1, column_name='daily_clicks')
 
-def calculate_clicks(df: pd.DataFrame, period_days: int = 1, column_name: str = 'clicks_per_period') -> pd.DataFrame:
+def generate_clicks_dataframe(base_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Hesaplamaları istenen zaman periyoduna göre yaparak tıklamaları hesaplar.
-    """
-    df = df.copy()
-    df = convert_and_sort_timestamps(df)
-    all_periods = create_complete_period_range(df, period_days)
-    period_stats = compute_period_statistics(df, all_periods)
-    period_stats = fill_missing_period_values(period_stats)
-    period_stats = calculate_clicks_and_time_elapsed(period_stats, period_days, column_name)
-    clicks_per_period = extract_clicks_per_period(period_stats, column_name)
-    return clicks_per_period
+    base_df'yi alır ve toplam tıklanma sayısını içeren veriyi, periyotlar arası tıklanma sayısına dönüştürür.
+    Bu işlemi yaparken veriyi işler ve bir pandas DataFrame döndürür.
 
-def convert_and_sort_timestamps(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Zaman damgalarını dönüştürür ve DataFrame'i sıralar.
-    """
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df = df.sort_values('timestamp')
-    return df
+    Args:
+        base_df (pd.DataFrame): İşlenecek DataFrame.
 
-def create_complete_period_range(df: pd.DataFrame, period_days: int) -> pd.DatetimeIndex:
+    Returns:
+        pd.DataFrame: İşlenmiş veriyi içeren DataFrame.
+    
+    Raises:
+        ValueError: Eğer sheet boş veya veri içermiyorsa.
     """
-    DataFrame'deki minimum ve maksimum zamandan tam bir periyot aralığı oluşturur.
-    """
-    start = df['timestamp'].min().normalize()
-    end = df['timestamp'].max().normalize() + pd.Timedelta(days=1)
-    return pd.date_range(start=start, end=end, freq=f'{period_days}D')
 
-def compute_period_statistics(df: pd.DataFrame, all_periods: pd.DatetimeIndex) -> pd.DataFrame:
-    """
-    Her periyot için ilk ve son girişleri hesaplar ve birleştirir.
-    """
-    df['period_start'] = pd.cut(df['timestamp'], bins=all_periods, right=False, labels=all_periods[:-1])
-    period_first = df.groupby('period_start', observed=False).first().reindex(all_periods[:-1])
-    period_last = df.groupby('period_start', observed=False).last().reindex(all_periods[:-1])
-    period_stats = pd.DataFrame({
-        'number_first': period_first['number'],
-        'timestamp_first': period_first['timestamp'],
-        'number_last': period_last['number'],
-        'timestamp_last': period_last['timestamp']
-    }, index=all_periods[:-1])
-    return period_stats
+    # Veriyi pandas DataFrame'e dönüştürüyoruz
+    df = base_df.copy()
+    
+    # 'number' sütunundaki artışları hesaplıyoruz
+    df['count'] = df['number'].diff().fillna(1)
+    
+    # İstenen sütunları seçiyoruz
+    clicks_dataframe = df[['timestamp', 'count']]
+    
+    return clicks_dataframe
 
-def fill_missing_period_values(period_stats: pd.DataFrame) -> pd.DataFrame:
+def convert_and_sort_timestamps(clicks_dataframe: pd.DataFrame) -> pd.DataFrame:
     """
-    Eksik değerleri ileri ve geri doldurarak tamamlar.
-    """
-    period_stats['number_first'] = period_stats['number_first'].ffill()
-    period_stats['timestamp_first'] = period_stats['timestamp_first'].ffill()
-    period_stats['number_last'] = period_stats['number_last'].bfill()
-    period_stats['timestamp_last'] = period_stats['timestamp_last'].bfill()
-    return period_stats
+    Zaman damgalarını pd.Timestamp formatına dönüştürür ve sıralar.
 
-def calculate_clicks_and_time_elapsed(period_stats: pd.DataFrame, period_days: int, column_name: str) -> pd.DataFrame:
+    Args:
+        clicks_dataframe (pd.DataFrame): İşlenecek DataFrame.
+    
+    Returns:
+        pd.DataFrame: Zaman damgaları düzenlenmiş ve zaman damgası sırasına göre sıralanmış DataFrame.
     """
-    Geçen zamanı ve tıklama farkını hesaplar.
-    """
-    period_stats['hours_elapsed'] = (
-        period_stats['timestamp_last'] - period_stats['timestamp_first']
-    ).dt.total_seconds() / 3600
-    period_stats['clicks_diff'] = period_stats['number_last'] - period_stats['number_first']
-    # Tıklamaları periyot uzunluğuna ölçeklendir
-    period_length_hours = period_days * 24
-    period_stats[column_name] = np.where(
-        period_stats['hours_elapsed'] > 0,
-        (period_stats['clicks_diff'] * (period_length_hours / period_stats['hours_elapsed'])),
-        0
-    )
-    period_stats[column_name] = period_stats[column_name].replace([np.inf, -np.inf], np.nan).fillna(0)
-    return period_stats
+    clicks_dataframe['timestamp'] = pd.to_datetime(clicks_dataframe['timestamp']) # Zaman damgalarını datetime formatına dönüştür
+    clicks_dataframe = clicks_dataframe.sort_values('timestamp') # Zaman damgalarına göre sırala
+    return clicks_dataframe
 
-def extract_clicks_per_period(period_stats: pd.DataFrame, column_name: str) -> pd.DataFrame:
+def generate_and_prepare_clicks_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Belirtilen tıklama sütununu çıkarır ve indeks adını ayarlar.
+    clicks_dataframe'i oluşturur, zaman damgalarını pd.Timestamp formatına dönüştürür ve zaman damgalarına göre sıralar.
+    
+    Args:
+        df (pd.DataFrame): İşlenecek DataFrame
+    
+    Returns:
+        pd.DataFrame: Hazırlanmış DataFrame
     """
-    clicks_per_period = period_stats[[column_name]].copy()
-    clicks_per_period.index.name = 'period_start'
-    return clicks_per_period
+    clicks_dataframe = generate_clicks_dataframe(df)
+    return convert_and_sort_timestamps(clicks_dataframe)
+
+def calculate_interval_durations(clicks_dataframe: pd.DataFrame) -> pd.DataFrame:
+    """
+    clicks_dataframe'deki tıklama aralıklarını hesaplar. Bunu yapmasının sebebi tıklama sayılarını belli periyodlarla (günlük/aylık/yıllık vb.)
+    hesaplayabilmektir.
+    
+    Args:
+        clicks_dataframe (pd.DataFrame): İşlenecek DataFrame
+    
+    Returns:
+        pd.DataFrame: Aralık süreleri eklenmiş DataFrame
+    """
+    clicks_dataframe['prev_timestamp'] = clicks_dataframe['timestamp'].shift(1) # Bir önceki elemanın zaman damgasını al
+    # İlk elemanın önceki zaman damgasını kendisiyle eşitle (çünkü yok)
+    clicks_dataframe.loc[clicks_dataframe.index[0], 'prev_timestamp'] = clicks_dataframe.loc[clicks_dataframe.index[0], 'timestamp']
+    # Aralıklar arasında geçen süreyi sanise cinsinden hesapla
+    clicks_dataframe['interval_duration'] = (clicks_dataframe['timestamp'] - clicks_dataframe['prev_timestamp']).dt.total_seconds()
+    # 0 olan süreleri çok küçük bir değerle değiştir (sıfıra bölme hatasını önlemek için)
+    clicks_dataframe['interval_duration'] = clicks_dataframe['interval_duration'].replace(0, np.finfo(float).eps)
+    return clicks_dataframe
+
+def process_single_period(count: float, period_start: pd.Timestamp) -> dict:
+    """
+    Bir periyod sadece tek elemandan oluşuyorsa tıklama sayısı ve başlangıç zamanınını içeren sözlük oluşturur.
+    
+    Args:
+        count (float): Tıklama sayısı
+        period_start (pd.Timestamp): Periyot başlangıç zamanı
+        
+    Returns:
+        dict: Periyot başlangıcı ve tıklama sayısını içeren sözlük
+    """
+    return {
+        'period_start': period_start,    # Sözlüğe periyot başlangıç zamanını ekler
+        'clicks_per_period': count       # Sözlüğe tıklama sayısını ekler
+    }
+
+def process_multiple_periods(row: pd.Series, period_starts: pd.DatetimeIndex, 
+                             column_name: str) -> list:
+    """
+    Birden fazla periyot için tıklama sayılarını hesaplar ve periyotlara dağıtır.
+    
+    Args:
+        row (pd.Series): İşlenecek veri satırı
+        period_starts (pd.DatetimeIndex): Periyot başlangıç zamanlarının listesi
+        column_name (str): Sonuç sözlüğünde kullanılacak sütun adı
+        
+    Returns:
+        list: Her periyot için tıklama sayılarını içeren sözlüklerden oluşan bir liste
+    """
+    period_counts = []  # Her periyot için tıklama sayılarını saklamak için boş bir liste oluştur
+
+    # Her periyot için işlemleri tekrarla
+    for i in range(len(period_starts) - 1):
+        period_start = period_starts[i]       # Şu anki periyot başlangıç zamanı
+        period_end = period_starts[i+1]       # Bir sonraki periyot başlangıç zamanı (şu anki periyot için bitiş zamanı)
+        
+        # Tıklama aralığı ile periyot arasındaki örtüşmenin başlangıç ve bitiş zamanlarını bul
+        overlap_start = max(row['prev_timestamp'], period_start)  # Örtüşmenin başladığı zaman
+        overlap_end = min(row['timestamp'], period_end)           # Örtüşmenin bittiği zaman
+        overlap_duration = (overlap_end - overlap_start).total_seconds()  # Örtüşme süresini saniye cinsinden hesapla
+        
+        # Örtüşme süresinin toplam tıklama aralığı süresine oranını bul
+        proportion = overlap_duration / row['interval_duration']  # Örtüşme oranı
+        allocated_count = row['count'] * proportion               # Tıklama sayısını bu orana göre dağıt
+        
+        # Her periyot için başlangıç zamanı ve hesaplanan tıklama sayısını sözlük olarak listeye ekle
+        period_counts.append({
+            'period_start': period_start,     # Periyot başlangıç zamanı
+            column_name: allocated_count      # Hesaplanan tıklama sayısı
+        })
+
+    return period_counts  # Her periyot için tıklama sayılarını içeren listeyi döndür
+
+def calculate_clicks(df: pd.DataFrame, period_days: int = 1, 
+                     column_name: str = 'clicks_per_period') -> pd.DataFrame:
+    """
+    Ana fonksiyon: Periyodik tıklama sayılarını hesaplar.
+    
+    Args:
+        df (pd.DataFrame): İşlenecek DataFrame
+        period_days (int): Gün periyodu (varsayılan 1)
+        column_name (str): Sonuç sütun adı (varsayılan 'clicks_per_period')
+    
+    Returns:
+        pd.DataFrame: Periyodik tıklama sayıları
+    """
+    period_type = 'D' # Periyot tipi (günlük)
+    # Tıklama verilerini hazırlar ve zaman damgalarını düzenler
+    df = generate_and_prepare_clicks_dataframe(df)
+    
+    # Tıklama aralıklarının sürelerini hesaplar
+    df = calculate_interval_durations(df)
+    
+    # Her periyot için tıklama sayılarını saklamak üzere boş bir liste oluşturur
+    period_counts = []
+    
+    # DataFrame'deki her satır için işlem yapar
+    for _, row in df.iterrows():
+        # Periyot frekansını belirler (örneğin '1D' günlük periyot için)
+        period_freq = f'{period_days}{period_type}'
+        
+        # Periyot başlangıçlarını belirler
+        period_starts = pd.date_range(
+            start=row['prev_timestamp'].floor(period_type),  # Önceki zaman damgasını aşağı yuvarlar (günün başlangıcı)
+            end=row['timestamp'].floor(period_type) + pd.Timedelta(days=period_days),  # Mevcut zaman damgasını aşağı yuvarlar ve periyot gününü ekler
+            freq=period_freq  # Belirlenen periyot frekansı
+        )
+        
+        # Eğer tıklama aralığı tek bir periyota denk geliyorsa
+        if len(period_starts) == 1:
+            # Tek periyot için tıklama sayısını hesaplar ve listeye ekler
+            period_counts.append(process_single_period(
+                row['count'], period_starts[0]
+            ))
+        else:
+            # Tıklama aralığı birden fazla periyotu kapsıyorsa
+            # Tıklama sayısını periyotlara dağıtarak hesaplar ve listeye ekler
+            period_counts.extend(process_multiple_periods(row, period_starts, column_name))
+    
+    #Tüm periyotları ve tıklama sayılarını içeren bir DataFrame oluşturur
+    result_df = pd.DataFrame(period_counts)
+    
+    # Periyot başlangıçlarına göre tıklama sayılarını toplar ve yuvarlar
+    result_df = result_df.groupby('period_start')[column_name].sum().round(2)
+    
+    # Sonucu bir DataFrame olarak döndürür
+    return result_df.to_frame()
+
+
 
 def calculate_monthly_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """
