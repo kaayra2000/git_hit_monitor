@@ -42,7 +42,7 @@ def process_view_count(camo_url: str, sheet: object, df: 'pd.DataFrame', value_t
             df.loc[len(df) - 1] = df_tuple
             append_counter = 0
         
-        plot_all_graphs(df)
+        plot_all_graphs(df, generate_range_plots=True)
         return df, append_counter, view_count
     else:
         print("\nGörüntülenme sayısı eklenirken bir hata oluştu.")

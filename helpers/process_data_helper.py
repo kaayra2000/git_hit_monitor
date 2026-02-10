@@ -404,3 +404,29 @@ def calculate_quarterly_clicks(df: pd.DataFrame) -> pd.DataFrame:
 def calculate_yearly_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """Yıllık tıklanma sayısını orantısal olarak hesaplar."""
     return calculate_period_clicks(df, freq='YS', column_name='yearly_clicks')
+
+
+# ---------------------------------------------------------------------------
+# Tarih aralığı filtreleme
+# ---------------------------------------------------------------------------
+
+def filter_dataframe_by_date_range(
+    df: pd.DataFrame,
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp
+) -> pd.DataFrame:
+    """
+    DataFrame'i belirtilen tarih aralığına [start_date, end_date) göre filtreler.
+
+    Args:
+        df: timestamp sütunu içeren DataFrame
+        start_date: Başlangıç tarihi (dahil)
+        end_date: Bitiş tarihi (hariç)
+
+    Returns:
+        Filtrelenmiş DataFrame
+    """
+    df = df.copy()
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    mask = (df['timestamp'] >= start_date) & (df['timestamp'] < end_date)
+    return df.loc[mask].reset_index(drop=True)
