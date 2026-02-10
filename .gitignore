@@ -6,3 +6,5 @@ plots
 data.csv
 .vscode
 .venv
+*.egg-info
+build/
