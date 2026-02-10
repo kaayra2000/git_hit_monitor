@@ -222,6 +222,10 @@ def plot_all_graphs(df: pd.DataFrame, plot_dir: str = 'plots',
         generator = PlotRangeGenerator(df, base_plot_dir=plot_dir)
         generator.generate_all_range_plots()
 
+        # 3. Ortalama İstatistik Aralık Plotları
+        avg_generator = AverageStatsRangeGenerator(df, base_plot_dir=avg_plot_dir)
+        avg_generator.generate_all_avg_range_plots()
+
 
 # ---------------------------------------------------------------------------
 # Aralık bazlı plot üretici (Single Responsibility)
@@ -230,7 +234,7 @@ def plot_all_graphs(df: pd.DataFrame, plot_dir: str = 'plots',
 class PlotRangeGenerator:
     """
     Belirli aralıklara göre plot dosyaları üreten sınıf.
-
+    
     Her periyot tipi için ilgili gruplama aralıklarına göre veriyi böler
     ve ayrı plot dosyaları oluşturur.
     """
@@ -295,6 +299,98 @@ class PlotRangeGenerator:
     ) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
         """Veri aralığını gruplama aralığına göre (start, end) çiftlerine böler."""
         ts = self.df['timestamp']
+        data_start = ts.min()
+        data_end = ts.max()
+
+        ranges: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+        current = group_range.get_range_start(data_start)
+
+        while current <= data_end:
+            range_end = group_range.get_next_range_start(current)
+            ranges.append((current, range_end))
+            current = range_end
+
+        return ranges
+
+
+class AverageStatsRangeGenerator:
+    """
+    Ortalama istatistikler için aralık bazlı plot üretici.
+    
+    Örn: 2024 yılı "günün saatleri" ortalaması.
+         2024 Ocak ayı "günün saatleri" ortalaması.
+    """
+
+    def __init__(self, df: pd.DataFrame, base_plot_dir: str = 'plots/ortalama') -> None:
+        self.df = df.copy()
+        self.df['timestamp'] = pd.to_datetime(self.df['timestamp'])
+        self.base_plot_dir = base_plot_dir
+
+    def generate_all_avg_range_plots(self) -> None:
+        """Desteklenen tüm ortalama tipleri için aralık plotlarını üretir."""
+        # Şimdilik sadece günün saatleri için implemente ediyoruz
+        self.generate_avg_range_plots(AveragePeriodType.GUNUN_SAATLERI)
+
+    def generate_avg_range_plots(self, avg_type: AveragePeriodType) -> None:
+        """Tek bir ortalama tipi için tüm gruplama aralıklarındaki plotları üretir."""
+        # Günün saatleri için Yıllık ve Aylık kırılımları destekle
+        supported_ranges = []
+        if avg_type == AveragePeriodType.GUNUN_SAATLERI:
+            supported_ranges = [PlotGroupRange.YILLIK, PlotGroupRange.AYLIK]
+        
+        for group_range in supported_ranges:
+            self._generate_plots_for_range(avg_type, group_range)
+
+    def _generate_plots_for_range(self, avg_type: AveragePeriodType,
+                                  group_range: PlotGroupRange) -> None:
+        """Belirli bir gruplama aralığı için tüm alt-aralık plotlarını üretir."""
+        # PlotRangeGenerator'ın range bölme mantığını tekrar kullan (dry violation accepted for independence)
+        # Aslında PlotRangeGenerator metodunu static yapıp kullanabiliriz ama şimdilik duplication ok.
+        # Alternatif: PlotRangeGenerator'dan türetebilirdik ama logic biraz farklı.
+        
+        for range_start, range_end in self._split_into_ranges(group_range):
+            self._plot_single_range(avg_type, group_range,
+                                    range_start, range_end)
+
+    def _plot_single_range(self, avg_type: AveragePeriodType,
+                           group_range: PlotGroupRange,
+                           range_start: pd.Timestamp,
+                           range_end: pd.Timestamp) -> None:
+        """Tek bir alt-aralık için ortalama plot üretir."""
+        filtered_df = process_data_helper.filter_dataframe_by_date_range(
+            self.df, range_start, range_end
+        )
+        if filtered_df.empty:
+            return
+
+        avg_df = process_data_helper.calculate_average_statistics(filtered_df, avg_type)
+        if avg_df.empty:
+            return
+
+        file_name = group_range.generate_file_name(range_start, range_end)
+        
+        # Folder structure: plots/ortalama/{avg_type_name}/{range_type_name}/
+        # avg_type.display_name: "günün_saatleri"
+        # group_range.folder_name: "yillik"
+        dir_path = os.path.join(
+            self.base_plot_dir, avg_type.display_name, group_range.folder_name
+        )
+        os.makedirs(dir_path, exist_ok=True)
+
+        file_path = os.path.join(dir_path, file_name)
+        title = f"Ortalama {avg_type.capitalize()} ({file_name})"
+        
+        plotter = BarGraphPlotter(avg_df, title, avg_type)
+        plotter.plot(fig_name=file_path) # BarGraphPlotter.plot expects name without extension
+
+    def _split_into_ranges(
+        self, group_range: PlotGroupRange
+    ) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+        """Veri aralığını gruplama aralığına göre (start, end) çiftlerine böler."""
+        ts = self.df['timestamp']
+        if ts.empty:
+            return []
+            
         data_start = ts.min()
         data_end = ts.max()
 
