@@ -1,27 +1,39 @@
-Amaç
------
+# Proje Amacı ve Tanımı
+Projenin temel amacı, Git üzerindeki tıklanma (hit) sayılarını takip etmek, bu verileri Google Sheets üzerinden okumak ve çeşitli zaman aralıklarında (günlük, aylık, çeyreklik, yıllık) anlamlı görselleştirmeler (grafikler) oluşturmaktır. Proje, verileri "process" edip "plot" ederek kullanıcıya sunar.
 
-Bu belge projenin mimari ilkelerini ve iyileştirme önerilerini özetler. Kod tabanının sürdürülebilir, test edilebilir ve genişletilebilir olması için kesinlikle SOLID prensiplerine uyulmalıdır ve uygun yerlerde tasarım kalıpları (design patterns) kullanılmalıdır.
+# Yazılım Geliştirme Prensipleri (ZORUNLU)
+Bu projede kod yazarken aşağıdaki prensiplere **kesinlikle** uyulmalıdır. Temiz, sade ve sürdürülebilir kod esastır.
 
-Kilit Noktalar ve Öneriler
--------------------------
-- **SOLID Uyma Zorunluluğu:** Kod, tek sorumluluk (SRP), açık/kapalı (OCP), Liskov yerine getirme (LSP), arayüz ayrımı (ISP) ve bağımlılıkların tersine çevrilmesi (DIP) prensiplerine göre düzenlenmelidir.
-- **Design Patterns Kullanımı:** Karmaşık veya tekrar eden sorumluluklar için uygun desenler tercih edin (ör: `Strategy`, `Factory`, `Adapter`, `Repository`, `Observer`, `Template Method`, `Dependency Injection`). Desenler sadece ihtiyaç varsa ve getirileri netse kullanılmalı.
-- **Sorumluluk Ayrımı:** `helpers` içindeki modüller tek bir göreve odaklanmalı; veri okuma, işleme, gösterim ve dışa yazma ayrı katmanlarda tutulmalı.
-- **Bağımlılık Enjeksiyonu:** Global konfigürasyon/bağımlılıklar doğrudan modüllerde import edilmek yerine fonksiyon/nesne constructor'ları aracılığıyla enjekte edilmeli. Bu test edilebilirliği artırır.
-- **Arayüz/Abstract Kullanımı:** İşlevselliğin sınırları için Python `abc` veya protokoller kullanarak açık sözleşmeler (interfaces) tanımlayın. Böylece farklı implementasyonlar kolayca değiştirilebilir.
-- **Küçük, Test Edilebilir Birimler:** Her fonksiyon/metod küçük ve tek bir işi yapacak şekilde refactor edilmeli; birim testleri bu küçük birimler için yazılmalı.
-- **Tip İpuçları ve Dokümantasyon:** Statik analize yardımcı olacak şekilde `typing` kullanımı ve kısa docstring'ler zorunlu olmalı.
-- **Hatalar ve Edge Case'ler:** Girdi doğrulama ve anlamlı hata mesajları ekleyin; dış servis çağrıları için retry/circuit-breaker stratejileri düşünün.
+## 1. Temel Prensipler
+- **KISS (Keep It Simple, Stupid):** Çözümleri mümkün olduğunca basit tutun. Karmaşık yapılar yerine okunabilir ve anlaşılır kod yazın. Gereksiz optimizasyondan kaçının.
+- **DRY (Don't Repeat Yourself):** Kod tekrarından kaçının. Ortak mantıkları yardımcı fonksiyonlara veya sınıflara taşıyın (Örn: `calculate_period_clicks` ve `GraphPlotter`).
+- **SOLID Prensipleri:**
+    - **S (Single Responsibility):** Her sınıf ve fonksiyonun tek bir sorumluluğu olmalı. (Örn: `process_data_helper` veri işler, `plot_helper` çizer).
+    - **O (Open/Closed):** Kod gelişime açık, değişime kapalı olmalı. Yeni bir grafik türü eklemek için mevcut kodu değiştirmek yerine yeni bir sınıf türetilmelidir (`GraphPlotter` hiyerarşisi gibi).
+    - **L (Liskov Substitution):** Alt sınıflar, üst sınıfların yerine geçebilmelidir.
+    - **I (Interface Segregation):** İstemciler kullanmadıkları arayüzlere bağımlı olmamalıdır.
+    - **D (Dependency Inversion):** Yüksek seviyeli modüller, düşük seviyeli modüllere doğrudan bağımlı olmamalı, soyutlamalara dayanmalıdır.
 
-Somut Öneriler (başlangıç için)
---------------------------------
-- `process_data_helper.py`: Büyük bir dosya; burada `Strategy` (farklı periyot hesaplama stratejileri) ve küçük yardımcı sınıflar/işlevlere bölünme uygun. I/O (`sheet.get_all_values`) ve veri işleme ayrılmalı.
-- `main.py`: Uygulama giriş noktası sadece orkestrasyon yapsın; konfigürasyon yükleme, servislere bağlanma ve gerekirse DI container/ön yapılandırma kullanılsın.
-- `helpers` modülleri: Her biri için açık sorumluluk, ortak util kodları için ayrı util modülü ve test kapsamı genişletilsin.
+## 2. Tasarım Kalıpları (Design Patterns)
+Projede uygun yerlerde tasarım kalıpları kullanılmalıdır. Mevcut kullanımlar ve öneriler:
+- **Strategy Pattern:** Farklı hesaplama veya işlem stratejileri için (Örn: `_estimate_from_overall_trend` vs. `_calculate_boundary_share`).
+- **Factory Pattern:** Nesne üretimini soyutlamak için (Örn: `GraphFactory`).
+- **Template Method:** Ortak akışın ana sınıfta tanımlanıp, detayların alt sınıflarda uygulandığı durumlar için (Örn: `GraphPlotter.plot` metodunun iskeleti).
 
-Sonraki Adımlar
----------------
-- Küçük bir refactor dalı açın; önce `process_data_helper.py`'yi SRP'ye göre bölün.
-- Birkaç kritik birim testi yazın (örn. dönem hesaplama, boundary payı hesaplama).
-- CI’ye lint (flake8/ruff) ve tip kontrol (`mypy`) ekleyin.
+## 3. Kod Kalitesi ve Standartlar
+- **Temiz Kod:** Değişken ve fonksiyon isimleri açıklayıcı olmalı. Yorum satırları "ne" yapıldığını değil, "neden" yapıldığını açıklamalı.
+- **Tip İpuçları (Type Hinting):** Tüm fonksiyon ve metodlarda parametre ve dönüş tipleri belirtilmelidir (`typing`).
+- **Dokümantasyon (Docstrings):** Modül, sınıf ve fonksiyonların başında kısa ve öz docstringler bulunmalıdır.
+- **Hata Yönetimi:** Hatalar sessizce geçiştirilmemeli, anlamlı loglar veya kullanıcı bildirimleri ile yönetilmelidir.
+
+# Proje Analizi ve Yapı
+- **`main.py`**: Uygulamanın giriş noktasıdır. Konfigürasyonu yükler ve ana döngüyü (veri okuma -> işleme -> bekleme) yönetir. Orkestrasyon sorumluluğundadır.
+- **`helpers/`**: İş mantığını barındıran modüller.
+    - **`process_data_helper.py`**: Ham veriyi işler, periyotlara böler ve tıklama sayılarını hesaplar. Matematiksel mantık buradadır.
+    - **`plot_helper.py`**: İşlenmiş veriyi görselleştirir. `GraphPlotter` sınıfı ve türevlerini içerir.
+    - **`sheets_helper.py`**: Google Sheets API ile iletişimi sağlar.
+    - **`enum_helper.py`**: Sabitler ve Enum yapıları (Periyot tipleri vb.) buradadır.
+- **`plots/`**: Üretilen grafiklerin kaydedildiği dizindir.
+
+**Geliştirme Yaparken:**
+Yeni bir özellik eklerken önce "Bu kod nereye ait?" diye sorun. UI ile ilgiliyse UI dosyalarına, veri işleme ise helper'lara, görselleştirme ise plot modüllerine ekleyin. Her zaman mevcut mimariyi koruyun ve iyileştirin.
