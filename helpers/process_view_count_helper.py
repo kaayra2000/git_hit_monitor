@@ -1,7 +1,6 @@
 
 from .camo_helper import get_number_from_url
 from .sheets_helper import append_to_sheet
-from .plot_helper import plot_all_graphs
 from .string_helper import convert_to_int
 
 import typing
@@ -42,7 +41,6 @@ def process_view_count(camo_url: str, sheet: object, df: 'pd.DataFrame', value_t
             df.loc[len(df) - 1] = df_tuple
             append_counter = 0
         
-        plot_all_graphs(df, generate_range_plots=True)
         return df, append_counter, view_count
     else:
         print("\nGörüntülenme sayısı eklenirken bir hata oluştu.")

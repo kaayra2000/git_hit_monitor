@@ -1,4 +1,5 @@
 from helpers import sheets_helper, process_view_count, timer_helper, process_data_helper, load_configuration
+from helpers.plot_helper import plot_all_graphs
 import sys
 def main():
     # Yapılandırma dosyasını yükle
@@ -15,6 +16,13 @@ def main():
 
     append_counter = 0
     cycle_counter = 0
+
+    def generate_plots():
+        """Tuşa basıldığında görselleri oluşturur."""
+        print("\nGörseller oluşturuluyor...")
+        plot_all_graphs(df, generate_range_plots=True)
+        print("Görseller oluşturuldu!")
+
     try:
         while True:
             df, new_appends, view_count = process_view_count(camo_url, sheet, df, value_threshold)
@@ -25,7 +33,7 @@ def main():
                 sys.stdout.write(f"\r{cycle_counter}. deneme ve {append_counter}. ekleme yapıldı. Şu anki görüntülenme sayısı: {view_count}\n")
                 sys.stdout.flush()
 
-            timer_helper.countdown_timer(interval_seconds)
+            timer_helper.countdown_timer(interval_seconds, on_keypress=generate_plots)
     except KeyboardInterrupt:
         print("\nZamanlayıcı durduruldu.")
 
@@ -34,3 +42,4 @@ def main():
 # Ana fonksiyonu çalıştır
 if __name__ == "__main__":
     main()
+

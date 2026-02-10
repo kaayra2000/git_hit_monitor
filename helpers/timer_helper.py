@@ -1,27 +1,47 @@
 import sys
 import time
+import select
+import tty
+import termios
+from typing import Optional, Callable
 
-def countdown_timer(interval_seconds: int) -> None:
+def countdown_timer(interval_seconds: int, on_keypress: Optional[Callable[[], None]] = None) -> None:
     """
-    Belirtilen süre boyunca geri sayım yapan ve sonunda satırı silen bir zamanlayıcı.
+    Belirtilen süre boyunca geri sayım yapan zamanlayıcı.
+    
+    Opsiyonel olarak tuş girişi dinler ve tuşa basıldığında
+    verilen callback fonksiyonunu çağırır.
 
     Args:
-        interval_seconds (int): Geri sayım için saniye cinsinden süre.
-
-    Returns:
-        None
+        interval_seconds: Geri sayım için saniye cinsinden süre.
+        on_keypress: Tuşa basıldığında çağrılacak callback fonksiyonu.
     """
-    while interval_seconds > 0:
-        info = get_info_str(interval_seconds)
+    old_settings = termios.tcgetattr(sys.stdin)
+    try:
+        tty.setcbreak(sys.stdin.fileno())
+        while interval_seconds > 0:
+            info = get_info_str(interval_seconds)
+            if on_keypress:
+                info += " (Görsel için bir tuşa basın)"
+            
+            sys.stdout.write(info)
+            sys.stdout.flush()
+            
+            # 1 saniye bekle, bu süre içinde tuş girişi kontrol et
+            ready, _, _ = select.select([sys.stdin], [], [], 1.0)
+            if ready and on_keypress:
+                sys.stdin.read(1)  # tuşu oku ve temizle
+                sys.stdout.write('\r' + ' ' * len(info) + '\r')
+                on_keypress()
+            
+            sys.stdout.write('\r' + ' ' * len(info) + '\r')
+            interval_seconds -= 1
         
-        sys.stdout.write(info)
+        sys.stdout.write('\033[1A')  # Bir satır yukarı çık
         sys.stdout.flush()
-        time.sleep(1)
-        sys.stdout.write('\r' + ' ' * len(info) + '\r')  # Satırı boşluklarla doldur ve başa dön
-        interval_seconds -= 1
-    
-    sys.stdout.write('\033[1A')  # Bir satır yukarı çık
-    sys.stdout.flush()
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
 def get_info_str(interval_seconds: int) -> str:
     """
     Verilen saniye cinsinden süreyi gün, ay, yıl, saat, dakika ve saniye cinsine çevirir
