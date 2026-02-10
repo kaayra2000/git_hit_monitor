@@ -192,6 +192,14 @@ def plot_all_graphs(df: pd.DataFrame, plot_dir: str = 'plots',
     os.chdir(plot_dir)
 
     for period in PlotPeriodType:
+        # Use the period's own policy to decide whether to generate a
+        # top-level/global plot. This is structural: the enum controls the
+        # behavior instead of ad-hoc checks here. For example, hourly
+        # (`saatlik`) is intentionally excluded from global plot generation
+        # because hourly data should be handled via range/average generators.
+        if not period.generates_global_plot:
+            continue
+
         period_df = period.calculate_clicks(df)
         if not period_df.empty:
             title = f"{period.capitalize()} Tıklanma Sayısı"

@@ -211,6 +211,19 @@ class PlotPeriodType(Enum):
         }
         return names[self]
 
+    @property
+    def generates_global_plot(self) -> bool:
+        """
+        Whether this period should produce a global (top-level) plot file.
+
+        We intentionally keep hourly/`saatlik` out of automatic global plot
+        generation because hourly data is dense and we prefer generating
+        averages/range-based hourly plots only via the range/average generators.
+        This keeps the behavior structural (controlled by the enum) rather than
+        scattering 'if period == SAATLIK' checks across plotting code.
+        """
+        return self != PlotPeriodType.SAATLIK
+
 
 class AveragePeriodType(Enum):
     """
