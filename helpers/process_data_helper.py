@@ -1,6 +1,7 @@
 import pandas as pd
 import typing
 from dataclasses import dataclass
+from .enum_helper import AveragePeriodType, PlotPeriodType
 
 if typing.TYPE_CHECKING:
     from gspread import Spreadsheet
@@ -50,6 +51,8 @@ def _get_period_start(timestamp: pd.Timestamp, freq: str) -> pd.Timestamp:
         return timestamp.normalize().replace(month=quarter_month, day=1)
     elif freq == 'YS':
         return timestamp.normalize().replace(month=1, day=1)
+    elif freq == 'h':
+        return timestamp.replace(minute=0, second=0, microsecond=0)
     else:
         raise ValueError(f"Desteklenmeyen frekans: {freq}")
 
@@ -61,6 +64,7 @@ def _get_period_end(period_start: pd.Timestamp, freq: str) -> pd.Timestamp:
         'MS': pd.DateOffset(months=1),
         'QS': pd.DateOffset(months=3),
         'YS': pd.DateOffset(years=1),
+        'h': pd.DateOffset(hours=1),
     }
     return period_start + offsets[freq]
 
@@ -430,3 +434,49 @@ def filter_dataframe_by_date_range(
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     mask = (df['timestamp'] >= start_date) & (df['timestamp'] < end_date)
     return df.loc[mask].reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Ortalama İstatistik Hesaplamaları
+# ---------------------------------------------------------------------------
+
+def calculate_hourly_clicks(df: pd.DataFrame) -> pd.DataFrame:
+    """Saatlik tıklanma sayısını orantısal olarak hesaplar."""
+    return calculate_period_clicks(df, freq='h', column_name='hourly_clicks')
+
+
+def calculate_average_statistics(df: pd.DataFrame, avg_type: AveragePeriodType) -> pd.DataFrame:
+    """
+    Belirtilen tipte ortalama istatistikleri hesaplar.
+
+    Örn:
+    - YILIN_AYLARI -> Tüm yıllardaki "Ocak" aylarının ortalaması, "Şubat" aylarının ortalaması...
+    - AYIN_GUNLERI -> Tüm aylardaki "1. gün"lerin ortalaması...
+    - GUNUN_SAATLERI -> Tüm günlerdeki "00:00-01:00" arası ortalaması...
+    """
+    source_period = avg_type.source_period_type
+
+    # 1. Kaynak veriyi hazırlama
+    if source_period:
+        source_df = source_period.calculate_clicks(df)
+        value_col = source_period.column_name
+    else:
+        # Should not happen ideally if all Enums are correctly defined
+        raise ValueError(f"No source period type defined for {avg_type}")
+
+    if source_df.empty:
+        return pd.DataFrame(columns=[avg_type.y_column])
+
+    # index artık period_start (datetime)
+    # Gruplama anahtarını çıkarma (Strategy Pattern)
+    groups = avg_type.get_grouping_key(source_df.index)
+
+    # 2. Gruplayıp ortalama alma
+    # result index: 1,2,3.. (grup id)
+    result = source_df.groupby(groups)[value_col].mean()
+
+    # DataFrame'e çevir
+    result_df = result.to_frame(name=avg_type.y_column)
+    result_df.index.name = 'group_id'
+    
+    return result_df

@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from . import process_data_helper
 import matplotlib.dates as mdates
 import math
-from .enum_helper import PlotPeriodType, PlotGroupRange
+from .enum_helper import PlotPeriodType, PlotGroupRange, AveragePeriodType
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +103,48 @@ class YearlyGraphPlotter(LineGraphPlotter):
 
 
 # ---------------------------------------------------------------------------
+# Bar Chart Plotter (Ortalama İstatistikler)
+# ---------------------------------------------------------------------------
+
+class BarGraphPlotter(GraphPlotter):
+    """Sütun grafik çizen sınıf (Ortalama istatistikler için)."""
+
+    def __init__(self, df: pd.DataFrame, title: str, avg_type: AveragePeriodType) -> None:
+        super().__init__(df, title, avg_type.y_column, avg_type.x_label)
+        self.avg_type = avg_type
+
+    def plot(self, fig_name: str) -> None:
+        # Veri yoksa çizme
+        if self.df.empty:
+            return
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        x_values = self.df.index
+        y_values = self.df[self.y_column]
+        
+        labels = self._get_xticklabels(x_values)
+        
+        # Bar chart çiz
+        ax.bar(x_values, y_values, color='#4CAF50', edgecolor='black', alpha=0.7)
+        
+        # Ortalama değeri çizgi olarak da gösterebiliriz (opsiyonel)
+        # Şimdilik sadece bar
+        
+        ax.set_xticks(x_values)
+        ax.set_xticklabels(labels, rotation=45, ha='right')
+        
+        self._set_common_properties(ax)
+        plt.tight_layout()
+        plt.savefig(f"{fig_name}.svg", format="svg")
+        plt.close()
+
+    def _get_xticklabels(self, x_values) -> list[str]:
+        """Index değerlerini okunabilir etiketlere dönüştürür."""
+        return [self.avg_type.get_formatted_label(val) for val in x_values]
+
+
+# ---------------------------------------------------------------------------
 # Fabrika (Single Responsibility – plotter oluşturma)
 # ---------------------------------------------------------------------------
 
@@ -158,6 +200,22 @@ def plot_all_graphs(df: pd.DataFrame, plot_dir: str = 'plots',
         else:
             print(f"No data available for {period} graph")
 
+    os.chdir(old_dir)
+
+    # 2. Ortalama İstatistik Grafikleri
+    avg_plot_dir = os.path.join(plot_dir, 'ortalama')
+    os.makedirs(avg_plot_dir, exist_ok=True)
+    os.chdir(avg_plot_dir)
+
+    for avg_type in AveragePeriodType:
+        avg_df = process_data_helper.calculate_average_statistics(df, avg_type)
+        if not avg_df.empty:
+            title = f"Ortalama {avg_type.capitalize()} Tıklanma"
+            fig_name = f"{avg_type.display_name}"
+            
+            plotter = BarGraphPlotter(avg_df, title, avg_type)
+            plotter.plot(fig_name)
+    
     os.chdir(old_dir)
 
     if generate_range_plots:

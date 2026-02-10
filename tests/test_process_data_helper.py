@@ -10,19 +10,17 @@ import pandas as pd
 import numpy as np
 import importlib.util
 
-# helpers/__init__.py'deki diğer modül bağımlılıklarını atlamak için
-# process_data_helper'ı doğrudan dosyadan yüklüyoruz
-_module_path = os.path.join(os.path.dirname(__file__), '..', 'helpers', 'process_data_helper.py')
-_spec = importlib.util.spec_from_file_location('process_data_helper', _module_path)
-_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_module)
+# Helpers modülünü import edebilmek için parent dizini path'e ekliyoruz
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-_calculate_boundary_share = _module._calculate_boundary_share
-calculate_period_clicks = _module.calculate_period_clicks
-calculate_daily_clicks = _module.calculate_daily_clicks
-calculate_monthly_clicks = _module.calculate_monthly_clicks
-calculate_quarterly_clicks = _module.calculate_quarterly_clicks
-calculate_yearly_clicks = _module.calculate_yearly_clicks
+from helpers.process_data_helper import (
+    _calculate_boundary_share,
+    calculate_period_clicks,
+    calculate_daily_clicks,
+    calculate_monthly_clicks,
+    calculate_quarterly_clicks,
+    calculate_yearly_clicks
+)
 
 
 def _make_df(records: list[tuple[str, int]]) -> pd.DataFrame:

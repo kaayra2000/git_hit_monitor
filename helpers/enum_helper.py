@@ -78,6 +78,7 @@ class PlotPeriodType(Enum):
 
     Her değer: (görünen_ad, y_sütun, x_etiket, max_tick, pandas_freq, tıklama_sütun_adı)
     """
+    SAATLIK = ("saatlik", "hourly_clicks", "Saat", 24, "h", "hourly_clicks")
     GUNLUK = ("günlük", "daily_clicks", "Tarih", 30, "D", "daily_clicks")
     AYLIK = ("aylık", "monthly_clicks", "Ay", 12, "MS", "monthly_clicks")
     CEYREKLIK = ("çeyreklik", "quarterly_clicks", "Çeyrek", 12, "QS", "quarterly_clicks")
@@ -113,6 +114,57 @@ class PlotPeriodType(Enum):
     def __str__(self) -> str:
         return self.display_name
 
+    def get_grouping_key(self, index: pd.DatetimeIndex) -> pd.Index | pd.Series:
+        """
+        Gruplama anahtarını (strategy pattern) döndürür.
+        
+        Args:
+            index: Gruplanacak verinin DatetimeIndex'i.
+            
+        Returns:
+            Gruplama için kullanılacak pandas Index veya Series (örn: index.month).
+        """
+        if self == AveragePeriodType.YILIN_CEYREKLERI:
+            return index.quarter
+        elif self == AveragePeriodType.YILIN_AYLARI:
+            return index.month
+        elif self == AveragePeriodType.AYIN_GUNLERI:
+            return index.day
+        elif self == AveragePeriodType.HAFTANIN_GUNLERI:
+            return index.dayofweek
+        elif self == AveragePeriodType.GUNUN_SAATLERI:
+            return index.hour
+        else:
+            raise ValueError(f"Grouping strategy not implemented for {self}")
+
+    def get_formatted_label(self, value: int) -> str:
+        """
+        Grup değeri için okunabilir etiket döndürür.
+        
+        Args:
+            value: Grup değeri (örn: 1 [Ocak], 0 [Pazartesi]).
+        """
+        if self == AveragePeriodType.YILIN_AYLARI:
+            months = {
+                1: 'Ocak', 2: 'Şubat', 3: 'Mart', 4: 'Nisan', 5: 'Mayıs', 6: 'Haziran',
+                7: 'Temmuz', 8: 'Ağustos', 9: 'Eylül', 10: 'Ekim', 11: 'Kasım', 12: 'Aralık'
+            }
+            return months.get(value, str(value))
+        
+        elif self == AveragePeriodType.HAFTANIN_GUNLERI:
+            days = {
+                0: 'Pazartesi', 1: 'Salı', 2: 'Çarşamba', 3: 'Perşembe', 4: 'Cuma', 5: 'Cumartesi', 6: 'Pazar'
+            }
+            return days.get(value, str(value))
+        
+        elif self == AveragePeriodType.YILIN_CEYREKLERI:
+            return f"{value}. Çeyrek"
+            
+        elif self == AveragePeriodType.GUNUN_SAATLERI:
+            return f"{value:02d}:00"
+            
+        return str(value)
+
     def calculate_clicks(self, df: 'pd.DataFrame') -> 'pd.DataFrame':
         """Bu periyot için tıklama sayılarını hesaplar (geç import ile)."""
         from . import process_data_helper
@@ -123,6 +175,10 @@ class PlotPeriodType(Enum):
     def get_group_ranges(self) -> list['PlotGroupRange']:
         """Bu periyot tipi için desteklenen gruplama aralıklarını döndürür."""
         mapping = {
+            PlotPeriodType.SAATLIK: [
+                 # Saatlik veriler çok yoğun olacağı için şimdilik gruplama aralığı tanımlamıyoruz
+                 # İlerde PlotGroupRange.GUNLUK eklenirse buraya eklenebilir.
+            ],
             PlotPeriodType.GUNLUK: [
                 PlotGroupRange.AYLIK,
                 PlotGroupRange.CEYREKLIK,
@@ -147,9 +203,95 @@ class PlotPeriodType(Enum):
     def folder_name(self) -> str:
         """Plot klasörü için ASCII uyumlu isim."""
         names = {
+            PlotPeriodType.SAATLIK: "saatlik",
             PlotPeriodType.GUNLUK: "gunluk",
             PlotPeriodType.AYLIK: "aylik",
             PlotPeriodType.CEYREKLIK: "ceyreklik",
             PlotPeriodType.YILLIK: "yillik",
         }
         return names[self]
+
+
+class AveragePeriodType(Enum):
+    """
+    Ortalama istatistik periyot tipi.
+
+    Her değer: (görünen_ad, y_sütun, x_etiket, kaynak_periyot_tipi)
+    """
+    YILIN_CEYREKLERI = ("yılın_çeyrekleri", "avg_clicks", "Çeyrek", PlotPeriodType.CEYREKLIK)
+    YILIN_AYLARI = ("yılın_ayları", "avg_clicks", "Ay", PlotPeriodType.AYLIK)
+    AYIN_GUNLERI = ("ayın_günleri", "avg_clicks", "Gün", PlotPeriodType.GUNLUK)
+    HAFTANIN_GUNLERI = ("haftanın_günleri", "avg_clicks", "Haftanın Günü", PlotPeriodType.GUNLUK)
+    GUNUN_SAATLERI = ("günün_saatleri", "avg_clicks", "Saat", PlotPeriodType.SAATLIK)
+
+    @property
+    def display_name(self) -> str:
+        return self.value[0]
+
+    @property
+    def y_column(self) -> str:
+        return self.value[1]
+
+    @property
+    def x_label(self) -> str:
+        return self.value[2]
+
+    @property
+    def source_period_type(self) -> PlotPeriodType | None:
+        return self.value[3]
+
+    def capitalize(self) -> str:
+        return self.display_name.replace("_", " ").title()
+
+    def __str__(self) -> str:
+        return self.display_name
+    def get_grouping_key(self, index: pd.DatetimeIndex) -> pd.Index | pd.Series:
+        """
+        Gruplama anahtarını (strategy pattern) döndürür.
+        
+        Args:
+            index: Gruplanacak verinin DatetimeIndex'i.
+            
+        Returns:
+            Gruplama için kullanılacak pandas Index veya Series (örn: index.month).
+        """
+        if self == AveragePeriodType.YILIN_CEYREKLERI:
+            return index.quarter
+        elif self == AveragePeriodType.YILIN_AYLARI:
+            return index.month
+        elif self == AveragePeriodType.AYIN_GUNLERI:
+            return index.day
+        elif self == AveragePeriodType.HAFTANIN_GUNLERI:
+            return index.dayofweek
+        elif self == AveragePeriodType.GUNUN_SAATLERI:
+            return index.hour
+        else:
+            raise ValueError(f"Grouping strategy not implemented for {self}")
+
+    def get_formatted_label(self, value: int) -> str:
+        """
+        Grup değeri için okunabilir etiket döndürür.
+        
+        Args:
+            value: Grup değeri (örn: 1 [Ocak], 0 [Pazartesi]).
+        """
+        if self == AveragePeriodType.YILIN_AYLARI:
+            months = {
+                1: 'Ocak', 2: 'Şubat', 3: 'Mart', 4: 'Nisan', 5: 'Mayıs', 6: 'Haziran',
+                7: 'Temmuz', 8: 'Ağustos', 9: 'Eylül', 10: 'Ekim', 11: 'Kasım', 12: 'Aralık'
+            }
+            return months.get(value, str(value))
+        
+        elif self == AveragePeriodType.HAFTANIN_GUNLERI:
+            days = {
+                0: 'Pazartesi', 1: 'Salı', 2: 'Çarşamba', 3: 'Perşembe', 4: 'Cuma', 5: 'Cumartesi', 6: 'Pazar'
+            }
+            return days.get(value, str(value))
+        
+        elif self == AveragePeriodType.YILIN_CEYREKLERI:
+            return f"{value}. Çeyrek"
+            
+        elif self == AveragePeriodType.GUNUN_SAATLERI:
+            return f"{value:02d}:00"
+            
+        return str(value)

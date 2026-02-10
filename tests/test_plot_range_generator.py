@@ -10,25 +10,11 @@ import importlib.util
 import shutil
 import tempfile
 
-# helpers/__init__.py'deki diğer modül bağımlılıklarını atlamak için
-# doğrudan dosyadan yüklüyoruz
+# Helpers modülünü import edebilmek için parent dizini path'e ekliyoruz
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# enum_helper
-_enum_path = os.path.join(os.path.dirname(__file__), '..', 'helpers', 'enum_helper.py')
-_spec_enum = importlib.util.spec_from_file_location('enum_helper', _enum_path)
-_enum_module = importlib.util.module_from_spec(_spec_enum)
-_spec_enum.loader.exec_module(_enum_module)
-
-PlotGroupRange = _enum_module.PlotGroupRange
-PlotPeriodType = _enum_module.PlotPeriodType
-
-# process_data_helper
-_pdh_path = os.path.join(os.path.dirname(__file__), '..', 'helpers', 'process_data_helper.py')
-_spec_pdh = importlib.util.spec_from_file_location('process_data_helper', _pdh_path)
-_pdh_module = importlib.util.module_from_spec(_spec_pdh)
-_spec_pdh.loader.exec_module(_pdh_module)
-
-filter_dataframe_by_date_range = _pdh_module.filter_dataframe_by_date_range
+from helpers.enum_helper import PlotGroupRange, PlotPeriodType
+from helpers.process_data_helper import filter_dataframe_by_date_range
 
 
 def _make_df(records: list[tuple[str, int]]) -> pd.DataFrame:
