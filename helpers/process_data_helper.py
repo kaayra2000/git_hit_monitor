@@ -1,7 +1,6 @@
 import pandas as pd
 import typing
-from datetime import datetime
-from collections import defaultdict
+from dataclasses import dataclass
 
 if typing.TYPE_CHECKING:
     from gspread import Spreadsheet
@@ -20,137 +19,314 @@ def read_and_preprocess_data(sheet: 'Spreadsheet') -> pd.DataFrame:
     Raises:
         ValueError: Eğer sheet boş veya veri içermiyorsa.
     """
-    # Sheet'den veriyi oku
     data = sheet.get_all_values()
 
     if not data or data[0] == []:
         return pd.DataFrame(columns=['timestamp', 'number'])
 
-    # İlk satır sütun isimleri değilse, sütun isimlerini ekle
     if data[0] != ['timestamp', 'number']:
         data.insert(0, ['timestamp', 'number'])
 
-    # DataFrame oluştur
     df = pd.DataFrame(data[1:], columns=data[0])
-
-    # 'number' sütununun sayısal olduğundan emin ol
     df['number'] = pd.to_numeric(df['number'], errors='coerce')
-
-    # Zaman damgasını datetime formatına çevir
     df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-
-    # Geçersiz tarih veya sayı değerlerini içeren satırları at
     df = df.dropna(subset=['timestamp', 'number'])
-
-    # Verileri zaman damgasına göre sırala
     df = df.sort_values('timestamp')
     return df
 
 
-def _get_period_boundaries(start: datetime, end: datetime, freq: str) -> list[pd.Timestamp]:
-    """
-    Verilen zaman aralığı için periyot sınırlarını oluşturur.
+# ---------------------------------------------------------------------------
+# Periyot sınır yardımcıları
+# ---------------------------------------------------------------------------
 
-    Args:
-        start: Başlangıç zamanı
-        end: Bitiş zamanı
-        freq: Pandas frekans string'i ('D', 'MS', 'QS', 'YS')
-
-    Returns:
-        Periyot sınırlarının listesi (sıralı, tekrarsız)
-    """
-    # Frekansa göre başlangıcı normalize et
+def _get_period_start(timestamp: pd.Timestamp, freq: str) -> pd.Timestamp:
+    """Verilen zaman damgası için ait olduğu periyodun başlangıcını döndürür."""
     if freq == 'D':
-        norm_start = pd.Timestamp(start).normalize()
+        return timestamp.normalize()
     elif freq == 'MS':
-        norm_start = pd.Timestamp(start).normalize().replace(day=1)
+        return timestamp.normalize().replace(day=1)
     elif freq == 'QS':
-        ts = pd.Timestamp(start).normalize()
-        quarter_month = ((ts.month - 1) // 3) * 3 + 1
-        norm_start = ts.replace(month=quarter_month, day=1)
+        quarter_month = ((timestamp.month - 1) // 3) * 3 + 1
+        return timestamp.normalize().replace(month=quarter_month, day=1)
     elif freq == 'YS':
-        norm_start = pd.Timestamp(start).normalize().replace(month=1, day=1)
+        return timestamp.normalize().replace(month=1, day=1)
     else:
         raise ValueError(f"Desteklenmeyen frekans: {freq}")
 
-    # Bitiş tarihini bir sonraki periyodun başlangıcına kadar genişlet
-    norm_end = pd.Timestamp(end)
 
-    # Periyot sınırlarını oluştur
-    boundaries = pd.date_range(start=norm_start, end=norm_end + pd.DateOffset(**_freq_to_offset(freq)), freq=freq)
-
-    # Sadece start-end aralığını kapsayan sınırları al
-    boundaries = boundaries[boundaries <= norm_end + pd.DateOffset(**_freq_to_offset(freq))]
-
-    return sorted(boundaries.tolist())
-
-
-def _freq_to_offset(freq: str) -> dict:
-    """Frekans string'ini DateOffset parametresine dönüştürür."""
-    mapping = {
-        'D': {'days': 1},
-        'MS': {'months': 1},
-        'QS': {'months': 3},
-        'YS': {'years': 1},
+def _get_period_end(period_start: pd.Timestamp, freq: str) -> pd.Timestamp:
+    """Verilen periyot başlangıcı için periyodun bitişini döndürür."""
+    offsets = {
+        'D': pd.DateOffset(days=1),
+        'MS': pd.DateOffset(months=1),
+        'QS': pd.DateOffset(months=3),
+        'YS': pd.DateOffset(years=1),
     }
-    return mapping[freq]
+    return period_start + offsets[freq]
 
 
-def distribute_clicks_proportionally(
-    click_start: float,
-    click_end: float,
-    time_start: pd.Timestamp,
-    time_end: pd.Timestamp,
-    freq: str
-) -> dict[pd.Timestamp, float]:
+# ---------------------------------------------------------------------------
+# Orantısal sınır hesaplama
+# ---------------------------------------------------------------------------
+
+def _calculate_boundary_share(
+    click_a: float,
+    click_b: float,
+    time_a: pd.Timestamp,
+    time_b: pd.Timestamp,
+    target_start: pd.Timestamp,
+    target_end: pd.Timestamp
+) -> float:
     """
-    İki ardışık kayıt arasındaki tıklama farkını, periyot sınırlarına göre
-    orantısal olarak dağıtır.
-
-    Örnek: 11 Ağustos 10:00 → 12 Ağustos 01:00 arası 15 tıklama farkı varsa,
-    14/15'i 11 Ağustos'a, 1/15'i 12 Ağustos'a yazılır.
+    İki kayıt arasındaki tıklama farkının, belirli bir zaman aralığına
+    düşen orantısal payını hesaplar.
 
     Args:
-        click_start: Başlangıç kayıt tıklama sayısı
-        click_end: Bitiş kayıt tıklama sayısı
-        time_start: Başlangıç zamanı
-        time_end: Bitiş zamanı
-        freq: Periyot frekansı ('D', 'MS', 'QS', 'YS')
+        click_a: İlk kaydın tıklama sayısı
+        click_b: İkinci kaydın tıklama sayısı
+        time_a: İlk kaydın zamanı
+        time_b: İkinci kaydın zamanı
+        target_start: Hedef zaman aralığının başlangıcı
+        target_end: Hedef zaman aralığının bitişi
 
     Returns:
-        Her periyot başlangıç zamanı -> o periyoda düşen tıklama miktarı
+        Hedef aralığa düşen tıklama miktarı
     """
-    click_diff = click_end - click_start
-    total_seconds = (time_end - time_start).total_seconds()
+    click_diff = click_b - click_a
+    total_seconds = (time_b - time_a).total_seconds()
 
     if total_seconds <= 0 or click_diff <= 0:
-        return {}
+        return 0.0
 
-    # Periyot sınırlarını oluştur
-    boundaries = _get_period_boundaries(time_start, time_end, freq)
+    segment_start = max(time_a, target_start)
+    segment_end = min(time_b, target_end)
 
-    # time_start ve time_end arasındaki zaman dilimlerini periyotlara böl
-    result: dict[pd.Timestamp, float] = {}
+    if segment_start >= segment_end:
+        return 0.0
 
-    for i in range(len(boundaries) - 1):
-        period_start_boundary = boundaries[i]
-        period_end_boundary = boundaries[i + 1]
+    segment_seconds = (segment_end - segment_start).total_seconds()
+    return click_diff * (segment_seconds / total_seconds)
 
-        # Bu periyotta geçen sürenin başlangıcı ve bitişi
-        segment_start = max(time_start, period_start_boundary)
-        segment_end = min(time_end, period_end_boundary)
 
-        if segment_start >= segment_end:
-            continue
+# ---------------------------------------------------------------------------
+# Komşu periyot bulma
+# ---------------------------------------------------------------------------
 
-        segment_seconds = (segment_end - segment_start).total_seconds()
-        ratio = segment_seconds / total_seconds
-        clicks_for_period = click_diff * ratio
+def _find_prev_data_period(period_groups: pd.DataFrame, current_index: int) -> pd.Series | None:
+    """Geriye doğru verisi olan ilk periyodu bulur."""
+    for j in range(current_index - 1, -1, -1):
+        row = period_groups.iloc[j]
+        if not pd.isna(row['last_time']):
+            return row
+    return None
 
-        if clicks_for_period > 0:
-            result[period_start_boundary] = result.get(period_start_boundary, 0) + clicks_for_period
 
+def _find_next_data_period(period_groups: pd.DataFrame, current_index: int) -> pd.Series | None:
+    """İleriye doğru verisi olan ilk periyodu bulur."""
+    for j in range(current_index + 1, len(period_groups)):
+        row = period_groups.iloc[j]
+        if not pd.isna(row['first_time']):
+            return row
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Periyot tıklama hesaplayıcıları (Strategy Pattern)
+# ---------------------------------------------------------------------------
+
+def _estimate_from_overall_trend(
+    df: pd.DataFrame,
+    period_start: pd.Timestamp,
+    period_end: pd.Timestamp,
+    anchor_time: pd.Timestamp | None = None,
+    use_anchor_as_start: bool = True
+) -> float:
+    """
+    Genel veri trendinden (son - ilk) orantısal tahmin yapar.
+
+    Args:
+        df: Tüm veri DataFrame'i
+        period_start: Periyot başlangıcı
+        period_end: Periyot bitişi
+        anchor_time: Bilinen komşu kaydın zamanı (segment sınırı olarak kullanılır)
+        use_anchor_as_start: True ise anchor sol sınır, False ise sağ sınır olur
+    """
+    overall_diff = df['number'].iloc[-1] - df['number'].iloc[0]
+    overall_total_sec = (df['timestamp'].iloc[-1] - df['timestamp'].iloc[0]).total_seconds()
+
+    if overall_total_sec <= 0 or overall_diff <= 0:
+        return 0.0
+
+    if anchor_time is not None:
+        if use_anchor_as_start:
+            seg_start = max(anchor_time, period_start)
+            seg_end = period_end
+        else:
+            seg_start = period_start
+            seg_end = min(anchor_time, period_end)
+    else:
+        seg_start = period_start
+        seg_end = period_end
+
+    if seg_end <= seg_start:
+        return 0.0
+
+    seg_sec = (seg_end - seg_start).total_seconds()
+    return overall_diff * (seg_sec / overall_total_sec)
+
+
+def _calculate_empty_period_clicks(
+    df: pd.DataFrame,
+    period_groups: pd.DataFrame,
+    index: int,
+    period_start: pd.Timestamp,
+    period_end: pd.Timestamp
+) -> float:
+    """
+    Verisi olmayan (boş) bir periyodun tıklama sayısını hesaplar.
+
+    Komşu durumuna göre strateji seçer:
+    - Her iki komşu var → aradaki orantısal pay
+    - Sadece sonraki var → genel trendden sağ sınır payı
+    - Sadece önceki var → genel trendden sol sınır payı
+    - Hiçbiri yok → genel trendden toplam fark
+    """
+    prev_data = _find_prev_data_period(period_groups, index)
+    next_data = _find_next_data_period(period_groups, index)
+
+    has_prev = prev_data is not None
+    has_next = next_data is not None
+
+    if has_prev and has_next:
+        return _calculate_boundary_share(
+            click_a=prev_data['last_number'],
+            click_b=next_data['first_number'],
+            time_a=prev_data['last_time'],
+            time_b=next_data['first_time'],
+            target_start=period_start,
+            target_end=period_end
+        )
+
+    if not has_prev and has_next:
+        return _estimate_from_overall_trend(
+            df, period_start, period_end,
+            anchor_time=next_data['first_time'],
+            use_anchor_as_start=False
+        )
+
+    if has_prev and not has_next:
+        return _estimate_from_overall_trend(
+            df, period_start, period_end,
+            anchor_time=prev_data['last_time'],
+            use_anchor_as_start=True
+        )
+
+    # İkisi de None → genel fark
+    return max(0.0, df['number'].iloc[-1] - df['number'].iloc[0])
+
+
+def _calculate_data_period_clicks(
+    period_groups: pd.DataFrame,
+    index: int,
+    row: pd.Series,
+    period_start: pd.Timestamp,
+    period_end: pd.Timestamp
+) -> float:
+    """
+    Verisi olan bir periyodun tıklama sayısını hesaplar.
+
+    Formül: iç_tıklamalar + sol_sınır_payı + sağ_sınır_payı
+    """
+    internal_clicks = max(0.0, row['last_number'] - row['first_number'])
+
+    left_share = _compute_left_boundary(period_groups, index, row, period_start, period_end)
+    right_share = _compute_right_boundary(period_groups, index, row, period_start, period_end)
+
+    return internal_clicks + left_share + right_share
+
+
+def _compute_left_boundary(
+    period_groups: pd.DataFrame,
+    index: int,
+    row: pd.Series,
+    period_start: pd.Timestamp,
+    period_end: pd.Timestamp
+) -> float:
+    """Önceki periyodun son kaydından bu periyodun ilk kaydına olan sınır payını hesaplar."""
+    prev_row = _find_prev_data_period(period_groups, index)
+    if prev_row is None:
+        return 0.0
+
+    return _calculate_boundary_share(
+        click_a=prev_row['last_number'],
+        click_b=row['first_number'],
+        time_a=prev_row['last_time'],
+        time_b=row['first_time'],
+        target_start=period_start,
+        target_end=period_end
+    )
+
+
+def _compute_right_boundary(
+    period_groups: pd.DataFrame,
+    index: int,
+    row: pd.Series,
+    period_start: pd.Timestamp,
+    period_end: pd.Timestamp
+) -> float:
+    """Bu periyodun son kaydından sonraki periyodun ilk kaydına olan sınır payını hesaplar."""
+    next_row = _find_next_data_period(period_groups, index)
+    if next_row is None:
+        return 0.0
+
+    return _calculate_boundary_share(
+        click_a=row['last_number'],
+        click_b=next_row['first_number'],
+        time_a=row['last_time'],
+        time_b=next_row['first_time'],
+        target_start=period_start,
+        target_end=period_end
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ana hesaplama fonksiyonu
+# ---------------------------------------------------------------------------
+
+def _create_empty_result(column_name: str) -> pd.DataFrame:
+    """Boş sonuç DataFrame'i oluşturur."""
+    result = pd.DataFrame(columns=[column_name])
+    result.index.name = 'period_start'
     return result
+
+
+def _prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """DataFrame'i hesaplama için hazırlar: kopyalar, dönüştürür, sıralar."""
+    df = df.copy()
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = df.sort_values('timestamp').reset_index(drop=True)
+    return df
+
+
+def _build_period_groups(df: pd.DataFrame, freq: str) -> tuple[pd.DataFrame, pd.DatetimeIndex]:
+    """Periyot gruplarını oluşturur ve tüm periyotları kapsayan aralığı döndürür."""
+    df['period'] = df['timestamp'].apply(lambda t: _get_period_start(t, freq))
+
+    period_groups = df.groupby('period').agg(
+        first_time=('timestamp', 'first'),
+        last_time=('timestamp', 'last'),
+        first_number=('number', 'first'),
+        last_number=('number', 'last')
+    ).sort_index()
+
+    all_periods = pd.date_range(
+        start=period_groups.index.min(),
+        end=period_groups.index.max(),
+        freq=freq
+    )
+
+    period_groups = period_groups.reindex(all_periods)
+    return period_groups, all_periods
 
 
 def calculate_period_clicks(df: pd.DataFrame, freq: str, column_name: str) -> pd.DataFrame:
@@ -158,70 +334,57 @@ def calculate_period_clicks(df: pd.DataFrame, freq: str, column_name: str) -> pd
     Verilen frekansa göre tıklama sayılarını orantısal olarak hesaplar.
     Tüm periyot tipleri (günlük, aylık, çeyreklik, yıllık) için ortak fonksiyon.
 
-    Ardışık kayıt çiftleri üzerinden döner, her çift için
-    distribute_clicks_proportionally çağırarak tıklamaları periyotlara dağıtır.
+    Her periyot için sadece 4 değere bakılır (O(periyot_sayısı) karmaşıklık):
+    1. Önceki periyodun son kaydı (prev_last)
+    2. Bu periyodun ilk kaydı (curr_first)
+    3. Bu periyodun son kaydı (curr_last)
+    4. Sonraki periyodun ilk kaydı (next_first)
+
+    Periyot tıklaması = iç_tıklamalar + sol_sınır_payı + sağ_sınır_payı
 
     Args:
         df: timestamp ve number sütunlarını içeren DataFrame
-        freq: Pandas frekans string'i ('D' günlük, 'MS' aylık, 'QS' çeyreklik, 'YS' yıllık)
+        freq: Pandas frekans string'i ('D', 'MS', 'QS', 'YS')
         column_name: Sonuç sütununun adı
 
     Returns:
         Periyot başlangıçları indeksli, tıklama sayılarını içeren DataFrame
     """
-    if df.empty:
-        result = pd.DataFrame(columns=[column_name])
-        result.index.name = 'period_start'
-        return result
+    if df.empty or len(df) < 2:
+        return _create_empty_result(column_name)
 
-    df = df.copy()
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df = df.sort_values('timestamp').reset_index(drop=True)
+    df = _prepare_dataframe(df)
 
     if len(df) < 2:
-        result = pd.DataFrame(columns=[column_name])
-        result.index.name = 'period_start'
-        return result
+        return _create_empty_result(column_name)
 
-    # Tüm periyotlara düşen tıklamaları topla
-    period_clicks: dict[pd.Timestamp, float] = defaultdict(float)
+    period_groups, all_periods = _build_period_groups(df, freq)
 
-    for i in range(len(df) - 1):
-        row_start = df.iloc[i]
-        row_end = df.iloc[i + 1]
+    clicks_list = []
+    for i, period_start in enumerate(all_periods):
+        row = period_groups.loc[period_start]
+        period_end = _get_period_end(period_start, freq)
 
-        distributed = distribute_clicks_proportionally(
-            click_start=row_start['number'],
-            click_end=row_end['number'],
-            time_start=pd.Timestamp(row_start['timestamp']),
-            time_end=pd.Timestamp(row_end['timestamp']),
-            freq=freq
-        )
+        if pd.isna(row['first_time']):
+            clicks = _calculate_empty_period_clicks(
+                df, period_groups, i, period_start, period_end
+            )
+        else:
+            clicks = _calculate_data_period_clicks(
+                period_groups, i, row, period_start, period_end
+            )
 
-        for period_key, clicks in distributed.items():
-            period_clicks[period_key] += clicks
+        clicks_list.append(clicks)
 
-    if not period_clicks:
-        result = pd.DataFrame(columns=[column_name])
-        result.index.name = 'period_start'
-        return result
-
-    # Tüm periyotları kapsayacak bir aralık oluştur (boş periyotlar da dahil)
-    all_period_starts = _get_period_boundaries(
-        df['timestamp'].min(), df['timestamp'].max(), freq
-    )
-    # Son sınır indeks olmaz, o yüzden sadece başlangıçları al
-    # Periyot sınırlarından, veri aralığındaki periyot başlangıçlarını filtrele
-    valid_starts = [b for b in all_period_starts if b <= df['timestamp'].max()]
-
-    # Sonuç DataFrame oluştur
-    result = pd.DataFrame(
-        {column_name: [period_clicks.get(ps, 0.0) for ps in valid_starts]},
-        index=pd.DatetimeIndex(valid_starts, name='period_start')
+    return pd.DataFrame(
+        {column_name: clicks_list},
+        index=pd.DatetimeIndex(all_periods, name='period_start')
     )
 
-    return result
 
+# ---------------------------------------------------------------------------
+# Periyot bazlı public API
+# ---------------------------------------------------------------------------
 
 def calculate_daily_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """Günlük tıklanma sayısını orantısal olarak hesaplar."""
@@ -241,43 +404,3 @@ def calculate_quarterly_clicks(df: pd.DataFrame) -> pd.DataFrame:
 def calculate_yearly_clicks(df: pd.DataFrame) -> pd.DataFrame:
     """Yıllık tıklanma sayısını orantısal olarak hesaplar."""
     return calculate_period_clicks(df, freq='YS', column_name='yearly_clicks')
-
-
-def calculate_average_clicks(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    2 saatlik ortalama tıklanma sayısını hesaplar.
-
-    Args:
-        df (pd.DataFrame): İşlenmiş veriyi içeren DataFrame.
-
-    Returns:
-        pd.DataFrame: Her gün için 2 saatlik ortalama tıklanma sayılarını içeren DataFrame.
-    """
-    # 2 saatlik ortalama tıklanma sayısını hesapla
-    average_clicks_list = []
-
-    for date in df['date'].unique():
-        # Belirli bir günün verilerini al
-        day_data = df[df['date'] == date].copy()
-        day_data.set_index('timestamp', inplace=True)
-
-        # 'number' sütunundaki farkları hesapla
-        day_data['number_diff'] = day_data['number'].diff()
-        day_data['number_diff'] = day_data['number_diff'].clip(lower=0)  # Negatif farkları sıfırla
-
-        # 2 saatlik aralıklarla verileri yeniden örnekle ve tıklanma sayılarını topla
-        resampled = day_data['number_diff'].resample('2h').sum()
-
-        # 2 saatlik periyotların ortalamasını al
-        if not resampled.empty:
-            average_clicks = resampled.mean()
-        else:
-            average_clicks = 0  # Veri yoksa ortalama tıklanma sayısını 0 olarak al
-
-        average_clicks_list.append({'date': date, 'average_clicks': average_clicks})
-
-    # Sonuçları DataFrame şeklinde düzenle
-    average_clicks_df = pd.DataFrame(average_clicks_list)
-    average_clicks_df.set_index('date', inplace=True)
-
-    return average_clicks_df
